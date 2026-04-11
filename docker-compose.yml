@@ -1,0 +1,60 @@
+version: '3.8'
+
+services:
+
+  # ── Flask App (Gunicorn) ───────────────────────────────────────────────────
+  app:
+    build: .
+    container_name: expense_tracker
+    restart: always
+    env_file:
+      - .env
+    volumes:
+      # Persistent SQLite database — maps ./data on host to /data in container
+      # Your expenses.db survives container restarts and rebuilds
+      - ./data:/data
+    networks:
+      - app_network
+    expose:
+      - "5001"       # Only exposed to nginx on the internal network, not public
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ── Nginx (Reverse Proxy + SSL) ────────────────────────────────────────────
+  nginx:
+    image: nginx:alpine
+    container_name: expense_nginx
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      # Certbot SSL certs (on the EC2 host, filled in by certbot)
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      # Certbot ACME challenge webroot
+      - /var/www/certbot:/var/www/certbot:ro
+    networks:
+      - app_network
+    depends_on:
+      - app
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+# ── Internal network ──────────────────────────────────────────────────────────
+networks:
+  app_network:
+    driver: bridge

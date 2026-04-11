@@ -1,0 +1,250 @@
+{% extends "base.html" %}
+{% block title %}Onboarding – Family Setup{% endblock %}
+
+{% block content %}
+<div class="topbar">
+  <div>
+    <h5><i class="bi bi-person-badge-fill me-2" style="color:var(--primary)"></i>Onboarding &amp; Invite Codes</h5>
+    <nav aria-label="breadcrumb">
+      <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{{ url_for('index') }}">Dashboard</a></li>
+        <li class="breadcrumb-item active">Onboarding</li>
+      </ol>
+    </nav>
+  </div>
+</div>
+
+<div class="row g-4">
+
+  <!-- ── Step 1: Create Family ── -->
+  <div class="col-lg-5">
+    <div class="card h-100">
+      <div class="card-header">
+        <span class="badge bg-primary me-2">Step 1</span>
+        <i class="bi bi-house-fill me-1 text-primary"></i>Create a Family
+      </div>
+      <div class="card-body">
+        <form method="POST" action="{{ url_for('onboarding') }}">
+          <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="action" value="create_family">
+          <div class="mb-3">
+            <label class="form-label fw-500">Family Name <span class="text-danger">*</span></label>
+            <input type="text" name="family_name" class="form-control"
+                   placeholder="e.g. Surya Family, The Tans" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-500">Your Name (Admin)</label>
+            <input type="text" name="admin_name" class="form-control"
+                   placeholder="e.g. Surya">
+          </div>
+          <div class="mb-4">
+            <label class="form-label fw-500">Your WhatsApp Number</label>
+            <div class="input-group">
+              <span class="input-group-text">+</span>
+              <input type="text" name="admin_phone" class="form-control"
+                     placeholder="6591234567  (with country code, no +)">
+            </div>
+            <small class="text-muted">Singapore example: 6591234567. You'll be added as admin member.</small>
+          </div>
+          <button type="submit" class="btn btn-primary w-100">
+            <i class="bi bi-plus-circle me-1"></i>Create Family
+          </button>
+        </form>
+
+        {% if families %}
+        <hr class="my-3">
+        <h6 class="fw-600 mb-2">Existing Families</h6>
+        {% for f in families %}
+        <div class="d-flex align-items-center justify-content-between p-2 rounded mb-1"
+             style="background:#f8fafc; border:1px solid var(--border)">
+          <div>
+            <span class="fw-500">{{ f.name }}</span>
+            <small class="text-muted ms-2">Created {{ f.created_at[:10] }}</small>
+          </div>
+          <span class="badge bg-light text-dark border">ID {{ f.id }}</span>
+        </div>
+        {% endfor %}
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Step 2: Generate Invite Code ── -->
+  <div class="col-lg-7">
+    <div class="card h-100">
+      <div class="card-header">
+        <span class="badge bg-success me-2">Step 2</span>
+        <i class="bi bi-key-fill me-1 text-success"></i>Generate Invite Code
+      </div>
+      <div class="card-body">
+        {% if not families %}
+        <div class="alert alert-warning">
+          <i class="bi bi-exclamation-triangle-fill me-2"></i>
+          Create a family first (Step 1) before generating invite codes.
+        </div>
+        {% else %}
+        <form method="POST" action="{{ url_for('onboarding') }}">
+          <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="action" value="generate_code">
+          <div class="row g-3 mb-3">
+            <div class="col-sm-6">
+              <label class="form-label fw-500">Member Nickname <span class="text-danger">*</span></label>
+              <input type="text" name="nickname" class="form-control"
+                     placeholder="e.g. John, Priya" required>
+            </div>
+            <div class="col-sm-6">
+              <label class="form-label fw-500">Family <span class="text-danger">*</span></label>
+              <select name="family_id" class="form-select" required>
+                <option value="">Select family…</option>
+                {% for f in families %}
+                <option value="{{ f.id }}">{{ f.name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+          <div class="row g-3 mb-3">
+            <div class="col-sm-4">
+              <label class="form-label fw-500">Expiry</label>
+              <select name="expiry" class="form-select">
+                <option value="1hr">1 hour</option>
+                <option value="24hrs" selected>24 hours</option>
+                <option value="7days">7 days</option>
+              </select>
+            </div>
+            <div class="col-sm-4">
+              <label class="form-label fw-500">Max Uses</label>
+              <input type="number" name="max_uses" class="form-control" value="1" min="1" max="10">
+            </div>
+            <div class="col-sm-4 d-flex align-items-end">
+              <div class="form-check form-switch mb-2">
+                <input class="form-check-input" type="checkbox" name="is_admin" id="isAdmin">
+                <label class="form-check-label fw-500" for="isAdmin">Is Admin</label>
+              </div>
+            </div>
+          </div>
+          <button type="submit" class="btn btn-success w-100">
+            <i class="bi bi-key me-1"></i>Generate Invite Code
+          </button>
+        </form>
+        {% endif %}
+
+        {% if generated %}
+        <!-- ── Generated Code Display ── -->
+        <div class="mt-4 p-3 rounded-3" style="background:#f0fdf4; border:2px solid #22c55e;">
+          <h6 class="fw-700 text-success mb-3">✅ Invite Code Generated!</h6>
+          <div class="row g-2 mb-3">
+            <div class="col-6"><strong>Code:</strong></div>
+            <div class="col-6">
+              <code class="fs-5 text-success fw-700" id="generatedCode">{{ generated.code }}</code>
+              <button class="btn btn-sm btn-outline-success ms-2" onclick="copyCode()" title="Copy">
+                <i class="bi bi-clipboard"></i>
+              </button>
+            </div>
+            <div class="col-6"><strong>For:</strong></div>
+            <div class="col-6">{{ generated.nickname }}</div>
+            <div class="col-6"><strong>Family:</strong></div>
+            <div class="col-6">{{ generated.family }}</div>
+            <div class="col-6"><strong>Expires:</strong></div>
+            <div class="col-6">{{ generated.expiry }}</div>
+            {% if generated.is_admin %}<div class="col-12"><span class="badge bg-warning text-dark">👑 Admin access</span></div>{% endif %}
+          </div>
+
+          <hr>
+          <p class="fw-600 mb-2">Share this with {{ generated.nickname }}:</p>
+          <div class="bg-white rounded p-3 mb-3" style="border:1px dashed #16a34a; font-size:.9rem"
+               id="shareMessage">
+            Hi {{ generated.nickname }}! You have been invited to join our family expense tracker.<br><br>
+            Send this exact message to WhatsApp: <strong>{{ generated.twilio_number }}</strong><br><br>
+            <strong>JOIN {{ generated.code }}</strong><br><br>
+            ⚠️ Code expires in {{ generated.expiry }}. Do not share with others.
+          </div>
+          <button class="btn btn-outline-success btn-sm" onclick="copyMessage()">
+            <i class="bi bi-clipboard me-1"></i>Copy Message
+          </button>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Active Codes Table ── -->
+<div class="card mt-4">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span><i class="bi bi-list-check me-2 text-primary"></i>All Invite Codes</span>
+    <span class="badge bg-primary">{{ active_codes|length }}</span>
+  </div>
+  <div class="card-body p-0">
+    {% if active_codes %}
+    <div class="table-responsive">
+      <table class="table mb-0">
+        <thead>
+          <tr>
+            <th>Code</th>
+            <th>For (Nickname)</th>
+            <th>Family</th>
+            <th>Created</th>
+            <th>Expires</th>
+            <th class="text-center">Status</th>
+            <th class="text-center">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for c in active_codes %}
+          <tr>
+            <td><code class="fw-700">{{ c.code }}</code></td>
+            <td>{{ c.nickname or '—' }}{% if c.is_admin %} <span class="badge bg-warning text-dark ms-1">👑</span>{% endif %}</td>
+            <td>{{ c.family_name or '—' }}</td>
+            <td class="text-muted" style="font-size:.83rem">{{ (c.created_at or '')[:10] }}</td>
+            <td class="text-muted" style="font-size:.83rem">{{ (c.expires_at or 'N/A')[:16] }}</td>
+            <td class="text-center">
+              {% if c.is_used %}
+                <span class="badge bg-secondary">Used</span>
+                {% if c.used_by %}<br><small class="text-muted">{{ c.used_by.replace('whatsapp:','') }}</small>{% endif %}
+              {% else %}
+                <span class="badge bg-success">Active</span>
+              {% endif %}
+            </td>
+            <td class="text-center">
+              {% if not c.is_used %}
+              <form method="POST" action="{{ url_for('revoke_code', code=c.code) }}"
+                    style="display:inline"
+                    onsubmit="return confirm('Revoke this invite code?')">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-sm btn-outline-danger py-0 px-2">
+                  <i class="bi bi-x-circle"></i> Revoke
+                </button>
+              </form>
+              {% else %}
+              <span class="text-muted">—</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="text-center text-muted py-4">
+      <i class="bi bi-key" style="font-size:2rem;opacity:.3"></i>
+      <p class="mt-2">No invite codes yet. Generate one above.</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function copyCode() {
+  const code = document.getElementById("generatedCode").textContent;
+  navigator.clipboard.writeText(code);
+  alert("Code copied: " + code);
+}
+function copyMessage() {
+  const msg = document.getElementById("shareMessage").innerText;
+  navigator.clipboard.writeText(msg);
+  alert("Message copied to clipboard!");
+}
+</script>
+{% endblock %}

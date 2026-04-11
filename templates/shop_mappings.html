@@ -1,0 +1,170 @@
+{% extends "base.html" %}
+{% block title %}Shop Mappings{% endblock %}
+
+{% block content %}
+<div class="topbar">
+  <div>
+    <h5><i class="bi bi-shop me-2" style="color:var(--primary)"></i>Shop → Category Mappings</h5>
+    <nav aria-label="breadcrumb">
+      <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{{ url_for('index') }}">Dashboard</a></li>
+        <li class="breadcrumb-item active">Shop Mappings</li>
+      </ol>
+    </nav>
+  </div>
+</div>
+
+<!-- ── Add Mapping ── -->
+<div class="card mb-4">
+  <div class="card-header">
+    <i class="bi bi-plus-circle-fill me-2 text-primary"></i>Add Shop Mapping
+  </div>
+  <div class="card-body">
+    <form method="POST" action="{{ url_for('shop_mappings') }}" class="row g-3 align-items-end">
+      <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+      <div class="col-sm-4">
+        <label class="form-label fw-500">Shop Name <span class="text-danger">*</span></label>
+        <input type="text" name="shop_name" class="form-control"
+               placeholder="e.g. Giant, Koufu, Prime" required>
+        <small class="text-muted">Case-insensitive. Spaces are OK.</small>
+      </div>
+      <div class="col-sm-3">
+        <label class="form-label fw-500">Category</label>
+        <select name="category" class="form-select">
+          {% for cat in categories %}
+          <option value="{{ cat }}">{{ cat }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-sm-3">
+        <label class="form-label fw-500">Scope</label>
+        <select name="family_id" class="form-select">
+          <option value="">🌐 Global (all families)</option>
+          {% for f in families %}
+          <option value="{{ f.id }}">🏠 {{ f.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-sm-2">
+        <button type="submit" class="btn btn-primary w-100">
+          <i class="bi bi-plus-lg me-1"></i>Add
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ── Mappings Table ── -->
+<div class="card">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span><i class="bi bi-table me-2 text-primary"></i>All Mappings</span>
+    <span class="badge bg-primary">{{ mappings|length }}</span>
+  </div>
+  <div class="card-body p-0">
+    {% if mappings %}
+    <!-- Filter tabs -->
+    <div class="px-3 pt-3 pb-0">
+      <ul class="nav nav-tabs" id="mappingTabs">
+        <li class="nav-item">
+          <button class="nav-link active" data-scope="all">All ({{ mappings|length }})</button>
+        </li>
+        <li class="nav-item">
+          <button class="nav-link" data-scope="global">🌐 Global</button>
+        </li>
+        {% if families %}
+        <li class="nav-item">
+          <button class="nav-link" data-scope="family">🏠 Family</button>
+        </li>
+        {% endif %}
+      </ul>
+    </div>
+    <div class="table-responsive">
+      <table class="table mb-0" id="mappingsTable">
+        <thead>
+          <tr>
+            <th>Shop Name</th>
+            <th>Category</th>
+            <th>Scope</th>
+            <th>Added</th>
+            <th class="text-center">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for m in mappings %}
+          <tr data-scope="{{ 'global' if m.family_id is none else 'family' }}">
+            <td class="fw-500">
+              <i class="bi bi-shop me-1 text-muted"></i>{{ m.shop_name }}
+            </td>
+            <td>
+              <span class="cat-badge cbadge" data-cat="{{ m.category }}">
+                <span class="cicon"></span>{{ m.category }}
+              </span>
+            </td>
+            <td>
+              {% if m.family_id is none %}
+                <span class="badge bg-light text-dark border">🌐 Global</span>
+              {% else %}
+                <span class="badge bg-primary">🏠 Family {{ m.family_id }}</span>
+              {% endif %}
+            </td>
+            <td class="text-muted" style="font-size:.83rem">{{ (m.created_at or '')[:10] }}</td>
+            <td class="text-center">
+              <form method="POST" action="{{ url_for('delete_shop_mapping', mapping_id=m.id) }}"
+                    style="display:inline"
+                    onsubmit="return confirm('Delete this shop mapping?')">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-sm btn-outline-danger py-0 px-2">
+                  <i class="bi bi-trash-fill"></i>
+                </button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="text-center text-muted py-5">
+      <i class="bi bi-shop" style="font-size:3rem;opacity:.3"></i>
+      <p class="mt-2">No shop mappings yet. Add one above.</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card mt-4" style="background:#f0fdf4; border-color:#bbf7d0">
+  <div class="card-body py-3">
+    <small>
+      <i class="bi bi-lightbulb-fill text-success me-1"></i>
+      <strong>How it works:</strong> When a member sends a WhatsApp expense like "FairPrice 45.50",
+      the bot looks up "fairprice" in this table and auto-categorises it as
+      <strong>Food & Groceries</strong> — no need to type the category.
+      Family-specific mappings override global ones.
+    </small>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Scope filter tabs
+document.querySelectorAll("#mappingTabs button").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll("#mappingTabs button").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    const scope = btn.dataset.scope;
+    document.querySelectorAll("#mappingsTable tbody tr").forEach(row => {
+      row.style.display = (scope === "all" || row.dataset.scope === scope) ? "" : "none";
+    });
+  });
+});
+
+// Category badge colours
+document.querySelectorAll(".cbadge[data-cat]").forEach(el => {
+  const cat = el.dataset.cat;
+  el.style.background = getCatLight(cat);
+  el.style.color      = getCatColor(cat);
+  el.querySelector(".cicon").textContent = getCatIcon(cat) + " ";
+});
+</script>
+{% endblock %}

@@ -1,0 +1,232 @@
+{% extends "base.html" %}
+{% block title %}Dashboard – Family Expenses{% endblock %}
+
+{% block content %}
+<div class="topbar">
+  <div>
+    <h5><i class="bi bi-grid-1x2-fill me-2" style="color:var(--primary)"></i>Dashboard</h5>
+    <nav aria-label="breadcrumb">
+      <ol class="breadcrumb">
+        <li class="breadcrumb-item active">Overview for {{ current_month }} {{ current_year }}</li>
+      </ol>
+    </nav>
+  </div>
+  <a href="{{ url_for('add') }}" class="btn btn-primary btn-sm px-3">
+    <i class="bi bi-plus-lg me-1"></i> Add Expense
+  </a>
+</div>
+
+<!-- ── Stat Cards ── -->
+<div class="row g-3 mb-4">
+  <div class="col-sm-6 col-lg-3">
+    <div class="stat-card bg-grad-purple">
+      <i class="bi bi-wallet2 icon"></i>
+      <div class="label">This Month Spend</div>
+      <div class="value">S${{ "{:,.0f}".format(stats.this_month) }}</div>
+      <div class="sub">{{ current_month }} {{ current_year }}</div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="stat-card bg-grad-green">
+      <i class="bi bi-receipt icon"></i>
+      <div class="label">Expenses This Month</div>
+      <div class="value">{{ stats.count_this_month }}</div>
+      <div class="sub">transactions recorded</div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="stat-card bg-grad-orange">
+      <i class="bi bi-shop icon"></i>
+      <div class="label">Top Shop This Month</div>
+      <div class="value" style="font-size:1rem; margin-top:.3rem">
+        {% if stats.top_shop %}
+          {{ stats.top_shop.shop_name }}
+        {% else %}
+          —
+        {% endif %}
+      </div>
+      <div class="sub">
+        {% if stats.top_shop %}S${{ "{:,.0f}".format(stats.top_shop.total) }} spent{% else %}No shop data yet{% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="stat-card bg-grad-blue">
+      <i class="bi bi-tag-fill icon"></i>
+      <div class="label">Top Category</div>
+      <div class="value" style="font-size:1rem; margin-top:.3rem">
+        {% if stats.top_category %}
+          {{ stats.top_category.category }}
+        {% else %}
+          —
+        {% endif %}
+      </div>
+      <div class="sub">
+        {% if stats.top_category %}S${{ "{:,.0f}".format(stats.top_category.total) }} spent{% else %}No data yet{% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Charts Row ── -->
+<div class="row g-3 mb-4">
+  <div class="col-lg-5">
+    <div class="card h-100">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-pie-chart-fill me-2 text-primary"></i>Spending by Category</span>
+        <small class="text-muted">{{ current_month }}</small>
+      </div>
+      <div class="card-body d-flex align-items-center justify-content-center" style="min-height:250px">
+        {% if pie_labels != '[]' %}
+          <canvas id="pieChart" style="max-height:250px"></canvas>
+        {% else %}
+          <div class="text-center text-muted py-4">
+            <i class="bi bi-pie-chart" style="font-size:3rem;opacity:.3"></i>
+            <p class="mt-2">No expenses this month yet.<br>
+              <a href="{{ url_for('add') }}">Add your first one →</a>
+            </p>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-7">
+    <div class="card h-100">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-bar-chart-fill me-2 text-primary"></i>Monthly Spending Trend</span>
+        <small class="text-muted">{{ current_year }}</small>
+      </div>
+      <div class="card-body" style="min-height:250px">
+        {% if bar_labels != '[]' %}
+          <canvas id="barChart" style="max-height:250px"></canvas>
+        {% else %}
+          <div class="text-center text-muted py-5">
+            <i class="bi bi-bar-chart" style="font-size:3rem;opacity:.3"></i>
+            <p class="mt-2">No data for {{ current_year }} yet.</p>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Recent Expenses ── -->
+<div class="card">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span><i class="bi bi-clock-history me-2 text-primary"></i>Recent Expenses – {{ current_month }}</span>
+    <a href="{{ url_for('expenses') }}" class="btn btn-outline-secondary btn-sm">View All</a>
+  </div>
+  <div class="card-body p-0">
+    {% if recent %}
+    <div class="table-responsive">
+      <table class="table mb-0">
+        <thead>
+          <tr>
+            <th>Title / Shop</th>
+            <th>Category</th>
+            <th>Member</th>
+            <th>Date</th>
+            <th class="text-end">Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for e in recent %}
+          <tr>
+            <td>
+              <span class="fw-500">{{ e.title }}</span>
+              {% if e.shop_name %}<br><small class="text-muted"><i class="bi bi-shop me-1"></i>{{ e.shop_name }}</small>{% endif %}
+              {% if e.label %}<br><small class="text-muted">{{ e.label }}</small>{% endif %}
+            </td>
+            <td>
+              <span class="cat-badge" id="badge-{{ loop.index }}"
+                    data-cat="{{ e.category }}">
+                <span id="icon-{{ loop.index }}"></span>{{ e.category }}
+              </span>
+            </td>
+            <td class="text-muted" style="font-size:.82rem">
+              <i class="bi bi-person me-1"></i>{{ e.added_by or 'Web' }}
+            </td>
+            <td class="text-muted">{{ e.date }}</td>
+            <td class="text-end fw-600">S${{ "{:,.2f}".format(e.amount) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="text-center text-muted py-5">
+      <i class="bi bi-inbox" style="font-size:3rem;opacity:.3"></i>
+      <p class="mt-2">No expenses recorded this month.<br>
+        <a href="{{ url_for('add') }}">Add your first expense →</a>
+      </p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const pieLabels = {{ pie_labels|safe }};
+const pieValues = {{ pie_values|safe }};
+const barLabels = {{ bar_labels|safe }};
+const barValues = {{ bar_values|safe }};
+
+if (pieLabels.length) {
+  const pieColors = pieLabels.map(l => getCatColor(l));
+  new Chart(document.getElementById("pieChart"), {
+    type: "doughnut",
+    data: {
+      labels: pieLabels,
+      datasets: [{ data: pieValues, backgroundColor: pieColors, borderWidth: 2, borderColor:"#fff" }]
+    },
+    options: {
+      plugins: {
+        legend: { position:"bottom", labels:{ font:{size:11}, padding:12 } },
+        tooltip: {
+          callbacks: {
+            label: ctx => ` S$${ctx.parsed.toLocaleString('en-SG')} (${
+              Math.round(ctx.parsed / ctx.dataset.data.reduce((a,b)=>a+b,0)*100)}%)`
+          }
+        }
+      },
+      cutout:"62%",
+    }
+  });
+}
+
+if (barLabels.length) {
+  new Chart(document.getElementById("barChart"), {
+    type: "bar",
+    data: {
+      labels: barLabels,
+      datasets: [{
+        label: "Monthly Spend (S$)",
+        data: barValues,
+        backgroundColor: "rgba(79,70,229,.75)",
+        borderRadius: 6,
+        borderSkipped: false,
+      }]
+    },
+    options: {
+      plugins: { legend:{ display:false } },
+      scales: {
+        y: {
+          beginAtZero:true,
+          ticks:{ callback: v => "S$"+v.toLocaleString('en-SG') }
+        }
+      }
+    }
+  });
+}
+
+document.querySelectorAll("[data-cat]").forEach(el => {
+  const cat  = el.dataset.cat;
+  el.style.background  = getCatLight(cat);
+  el.style.color       = getCatColor(cat);
+  const iconEl = el.querySelector("[id^='icon-']");
+  if (iconEl) iconEl.textContent = getCatIcon(cat) + " ";
+});
+</script>
+{% endblock %}

@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block title %}Edit Expense{% endblock %}
+
+{% block content %}
+<div class="topbar">
+  <div>
+    <h5><i class="bi bi-pencil-fill me-2" style="color:var(--primary)"></i>Edit Expense</h5>
+    <nav aria-label="breadcrumb">
+      <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{{ url_for('index') }}">Dashboard</a></li>
+        <li class="breadcrumb-item"><a href="{{ url_for('expenses') }}">Expenses</a></li>
+        <li class="breadcrumb-item active">Edit</li>
+      </ol>
+    </nav>
+  </div>
+</div>
+
+<div class="row justify-content-center">
+  <div class="col-lg-7 col-xl-6">
+    <div class="card">
+      <div class="card-header">
+        <i class="bi bi-pencil me-2 text-primary"></i>Update Expense
+      </div>
+      <div class="card-body p-4">
+        <form method="POST" action="{{ url_for('edit', expense_id=expense.id) }}">
+          <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+
+          <div class="mb-3">
+            <label class="form-label fw-500">Expense Title <span class="text-danger">*</span></label>
+            <input type="text" name="title" class="form-control"
+                   value="{{ expense.title }}" required>
+          </div>
+
+          <div class="row g-3 mb-3">
+            <div class="col-sm-6">
+              <label class="form-label fw-500">Amount (S$) <span class="text-danger">*</span></label>
+              <div class="input-group">
+                <span class="input-group-text">S$</span>
+                <input type="number" name="amount" class="form-control"
+                       step="0.01" min="0.01" value="{{ expense.amount }}" required>
+              </div>
+            </div>
+            <div class="col-sm-6">
+              <label class="form-label fw-500">Category</label>
+              <select name="category" class="form-select" id="catSelect">
+                {% for cat in categories %}
+                  <option value="{{ cat }}"
+                    {% if expense.category == cat %}selected{% endif %}>
+                    {{ cat }}
+                  </option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <div id="catPreview" class="p-2 rounded-3 d-inline-flex align-items-center gap-2"
+                 style="font-size:.85rem; font-weight:500"></div>
+          </div>
+
+          <div class="row g-3 mb-3">
+            <div class="col-sm-6">
+              <label class="form-label fw-500">Shop Name <small class="text-muted">(optional)</small></label>
+              <input type="text" name="shop_name" class="form-control"
+                     value="{{ expense.shop_name or '' }}"
+                     placeholder="e.g. FairPrice, Grab">
+            </div>
+            <div class="col-sm-6">
+              <label class="form-label fw-500">Label <small class="text-muted">(optional)</small></label>
+              <input type="text" name="label" class="form-control"
+                     value="{{ expense.label or '' }}"
+                     placeholder="e.g. weekly groceries">
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label fw-500">Date</label>
+            <input type="date" name="date" class="form-control"
+                   value="{{ expense.date }}" required>
+          </div>
+
+          <div class="mb-4">
+            <label class="form-label fw-500">Note <small class="text-muted">(optional)</small></label>
+            <textarea name="note" class="form-control" rows="2">{{ expense.note or '' }}</textarea>
+          </div>
+
+          <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-primary px-4">
+              <i class="bi bi-check-lg me-1"></i>Update
+            </button>
+            <a href="{{ url_for('expenses') }}" class="btn btn-outline-secondary px-4">Cancel</a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function updatePreview() {
+  const cat = document.getElementById("catSelect").value;
+  const preview = document.getElementById("catPreview");
+  preview.textContent = getCatIcon(cat) + "  " + cat;
+  preview.style.background = getCatLight(cat);
+  preview.style.color      = getCatColor(cat);
+}
+document.getElementById("catSelect").addEventListener("change", updatePreview);
+updatePreview();
+</script>
+{% endblock %}

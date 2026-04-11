@@ -1,0 +1,284 @@
+{% extends "base.html" %}
+{% block title %}Monthly Summary – {{ month_name }} {{ selected_year }}{% endblock %}
+
+{% block content %}
+<div class="topbar">
+  <div>
+    <h5><i class="bi bi-bar-chart-fill me-2" style="color:var(--primary)"></i>Monthly Summary</h5>
+    <nav aria-label="breadcrumb">
+      <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{{ url_for('index') }}">Dashboard</a></li>
+        <li class="breadcrumb-item active">{{ month_name }} {{ selected_year }}</li>
+      </ol>
+    </nav>
+  </div>
+</div>
+
+<!-- ── Month Selector ── -->
+<div class="card mb-4">
+  <div class="card-body py-3">
+    <form method="GET" class="row g-2 align-items-end">
+      <div class="col-sm-4 col-md-3">
+        <label class="form-label mb-1" style="font-size:.78rem;font-weight:600;text-transform:uppercase;color:var(--muted)">Month</label>
+        <select name="month" class="form-select form-select-sm">
+          {% for m in range(1, 13) %}
+            <option value="{{ m }}" {% if m == selected_month %}selected{% endif %}>
+              {{ month_names[m] }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-sm-3 col-md-2">
+        <label class="form-label mb-1" style="font-size:.78rem;font-weight:600;text-transform:uppercase;color:var(--muted)">Year</label>
+        <select name="year" class="form-select form-select-sm">
+          {% for y in range(2020, 2028) %}
+            <option value="{{ y }}" {% if y == selected_year %}selected{% endif %}>{{ y }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2">
+        <button type="submit" class="btn btn-primary btn-sm px-4">
+          <i class="bi bi-search me-1"></i>View
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% if category_data %}
+<!-- ── Grand Total Banner ── -->
+<div class="card mb-4" style="background:linear-gradient(135deg,#4f46e5,#7c3aed); border:none;">
+  <div class="card-body py-3 text-white d-flex align-items-center justify-content-between">
+    <div>
+      <div style="font-size:.85rem;opacity:.8">Total Spent in {{ month_name }} {{ selected_year }}</div>
+      <div style="font-size:2rem;font-weight:700">S${{ "{:,.2f}".format(grand_total) }}</div>
+    </div>
+    <div style="font-size:3rem;opacity:.2"><i class="bi bi-wallet2"></i></div>
+  </div>
+</div>
+
+<!-- ── Charts row ── -->
+<div class="row g-3 mb-4">
+  <!-- Pie / Doughnut -->
+  <div class="col-lg-5">
+    <div class="card h-100">
+      <div class="card-header">
+        <i class="bi bi-pie-chart-fill me-2 text-primary"></i>Category Breakdown
+      </div>
+      <div class="card-body d-flex align-items-center justify-content-center" style="min-height:280px">
+        <canvas id="pieChart" style="max-height:280px"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- Day-wise Line Chart -->
+  <div class="col-lg-7">
+    <div class="card h-100">
+      <div class="card-header">
+        <i class="bi bi-graph-up me-2 text-primary"></i>Day-wise Spending
+      </div>
+      <div class="card-body" style="min-height:280px">
+        {% if line_labels != '[]' %}
+          <canvas id="lineChart" style="max-height:260px"></canvas>
+        {% else %}
+          <div class="text-center text-muted py-5">No day-wise data.</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Category breakdown table ── -->
+<div class="card mb-4">
+  <div class="card-header">
+    <i class="bi bi-table me-2 text-primary"></i>Category-wise Breakdown
+  </div>
+  <div class="card-body p-0">
+    <table class="table mb-0">
+      <thead>
+        <tr>
+          <th>Category</th>
+          <th>Amount</th>
+          <th style="width:35%">Share</th>
+          <th class="text-end">%</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in category_data %}
+        <tr>
+          <td>
+            <span class="cat-badge cbadge" data-cat="{{ row.category }}">
+              <span class="cicon"></span>{{ row.category }}
+            </span>
+          </td>
+          <td class="fw-600">S${{ "{:,.2f}".format(row.total) }}</td>
+          <td>
+            <div class="progress" style="height:8px; background:#f1f5f9;">
+              <div class="progress-bar progress-fill"
+                   data-cat="{{ row.category }}"
+                   data-pct="{{ row.pct }}"
+                   role="progressbar"
+                   style="width:{{ row.pct }}%; border-radius:4px">
+              </div>
+            </div>
+          </td>
+          <td class="text-end text-muted">{{ row.pct }}%</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr style="background:#f8fafc">
+          <td class="fw-700">Total</td>
+          <td class="fw-700 text-primary">S${{ "{:,.2f}".format(grand_total) }}</td>
+          <td></td>
+          <td class="text-end fw-600">100%</td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+</div>
+
+<!-- ── Insight Cards ── -->
+<div class="row g-3">
+  <!-- Highest spend -->
+  {% if category_data %}
+  <div class="col-sm-6 col-lg-4">
+    <div class="card border-0" style="background:#fef3c7">
+      <div class="card-body">
+        <div class="d-flex align-items-center gap-2 mb-1">
+          <span style="font-size:1.5rem">🔥</span>
+          <span class="fw-600 text-warning-emphasis">Highest Spend</span>
+        </div>
+        <div class="fw-700" style="font-size:1.1rem">{{ category_data[0].category }}</div>
+        <div class="text-muted">S${{ "{:,.2f}".format(category_data[0].total) }} · {{ category_data[0].pct }}% of budget</div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Lowest spend -->
+  {% if category_data|length > 1 %}
+  <div class="col-sm-6 col-lg-4">
+    <div class="card border-0" style="background:#d1fae5">
+      <div class="card-body">
+        <div class="d-flex align-items-center gap-2 mb-1">
+          <span style="font-size:1.5rem">✅</span>
+          <span class="fw-600" style="color:#065f46">Lowest Spend</span>
+        </div>
+        <div class="fw-700" style="font-size:1.1rem">{{ category_data[-1].category }}</div>
+        <div class="text-muted">S${{ "{:,.2f}".format(category_data[-1].total) }} · {{ category_data[-1].pct }}% of budget</div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Daily average -->
+  <div class="col-sm-6 col-lg-4">
+    <div class="card border-0" style="background:#dbeafe">
+      <div class="card-body">
+        <div class="d-flex align-items-center gap-2 mb-1">
+          <span style="font-size:1.5rem">📅</span>
+          <span class="fw-600" style="color:#1e3a8a">Daily Average</span>
+        </div>
+        <div class="fw-700" style="font-size:1.1rem">
+          S${{ "{:,.2f}".format(grand_total / 30) }}
+        </div>
+        <div class="text-muted">per day (based on 30-day month)</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% else %}
+<!-- No data state -->
+<div class="card">
+  <div class="card-body text-center py-6">
+    <div style="font-size:4rem;opacity:.3">📊</div>
+    <h5 class="mt-3 text-muted">No expenses for {{ month_name }} {{ selected_year }}</h5>
+    <p class="text-muted">Try selecting a different month or <a href="{{ url_for('add') }}">add some expenses</a>.</p>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── Pie chart ─────────────────────────────────────────────────────────────────
+const pieLabels = {{ pie_labels|safe }};
+const pieValues = {{ pie_values|safe }};
+if (pieLabels.length) {
+  new Chart(document.getElementById("pieChart"), {
+    type: "doughnut",
+    data: {
+      labels: pieLabels,
+      datasets: [{
+        data: pieValues,
+        backgroundColor: pieLabels.map(l => getCatColor(l)),
+        borderWidth: 2,
+        borderColor: "#fff",
+      }]
+    },
+    options: {
+      plugins: {
+        legend: { position:"bottom", labels:{ font:{size:11}, padding:12 } },
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              const total = ctx.dataset.data.reduce((a,b)=>a+b,0);
+              const pct   = Math.round(ctx.parsed / total * 100);
+              return ` S$${ctx.parsed.toLocaleString('en-SG')} (${pct}%)`;
+            }
+          }
+        }
+      },
+      cutout: "62%",
+    }
+  });
+}
+
+// ── Line chart ────────────────────────────────────────────────────────────────
+const lineLabels = {{ line_labels|safe }};
+const lineValues = {{ line_values|safe }};
+if (lineLabels.length) {
+  new Chart(document.getElementById("lineChart"), {
+    type: "line",
+    data: {
+      labels: lineLabels,
+      datasets: [{
+        label: "Daily Spend (S$)",
+        data: lineValues,
+        borderColor: "#4f46e5",
+        backgroundColor: "rgba(79,70,229,.1)",
+        borderWidth: 2,
+        pointBackgroundColor: "#4f46e5",
+        fill: true,
+        tension: 0.35,
+      }]
+    },
+    options: {
+      plugins: { legend:{ display:false } },
+      scales: {
+        y: {
+          beginAtZero:true,
+          ticks:{ callback: v => "S$"+v.toLocaleString('en-SG') }
+        },
+        x: { ticks:{ maxTicksLimit:10, maxRotation:40 } }
+      }
+    }
+  });
+}
+
+// ── Badges & progress bars ────────────────────────────────────────────────────
+document.querySelectorAll(".cbadge[data-cat]").forEach(el => {
+  const cat = el.dataset.cat;
+  el.style.background = getCatLight(cat);
+  el.style.color      = getCatColor(cat);
+  el.querySelector(".cicon").textContent = getCatIcon(cat) + " ";
+});
+
+document.querySelectorAll(".progress-fill[data-cat]").forEach(el => {
+  el.style.backgroundColor = getCatColor(el.dataset.cat);
+  el.style.width = el.dataset.pct + "%";
+});
+</script>
+{% endblock %}
