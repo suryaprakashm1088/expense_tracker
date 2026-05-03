@@ -1,7 +1,7 @@
 """
 services/scheduler.py — Scheduled background jobs for the Expense Tracker.
 
-  backup_database()     — SQLite backup to /data/backups/, rotates last 30; 18:00 UTC (02:00 SGT)
+  backup_database()     — SQLite backup to /data/backups/, rotates per BACKUP_KEEP_DAYS (default 30); 18:00 UTC (02:00 SGT)
   send_daily_summary()  — AI WhatsApp summary to all family members; 12:00 UTC (20:00 SGT)
   start_scheduler()     — registers both jobs and starts APScheduler; call once at startup
 """
@@ -24,12 +24,12 @@ def backup_database():
 
     Backup location : /data/backups/  (inside the Docker volume — persists between restarts)
     Naming          : expenses_YYYYMMDD_HHMMSS.db
-    Retention       : last 30 backups (older ones are deleted automatically)
+    Retention       : last BACKUP_KEEP_DAYS backups (default 30, set via .env)
     Method          : sqlite3.Connection.backup() — hot-backup API, safe while the app
                       is serving requests (no lock contention, no WAL corruption)
     Schedule        : 18:00 UTC = 02:00 SGT (quiet hours)
     """
-    KEEP_LAST = 30
+    KEEP_LAST = int(os.getenv("BACKUP_KEEP_DAYS", 30))
 
     # Resolve the live DB path (same env var used by database.py)
     db_path = os.getenv("DB_PATH", os.path.join(os.path.dirname(__file__), "..", "expenses.db"))

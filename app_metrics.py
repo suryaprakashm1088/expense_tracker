@@ -122,14 +122,21 @@ APP_INFO.info({
 # ─────────────────────────────────────────────────────────────────────────────
 
 class _DailyStatsCollector:
-    """Custom Prometheus collector that queries the DB on each scrape.
+    """Custom Prometheus collector that queries the DB and filesystem on each scrape.
 
-    Emits two Gauges:
-      expense_tracker_expenses_today   — expenses added today (all methods)
+    Emits:
+      expense_tracker_expenses_today          — expenses added today (all methods)
       expense_tracker_whatsapp_messages_today — WhatsApp messages received today
+      expense_tracker_last_backup_age_seconds — seconds since the most recent DB backup
+      expense_tracker_backup_count            — number of backup files currently on disk
+      expense_tracker_last_backup_size_bytes  — size of the most recent backup file
     """
 
     def collect(self):
+        import os, glob, time
+        from datetime import datetime
+
+        # ── DB counts ────────────────────────────────────────────────────────
         try:
             import database as db
             expense_count = db.get_expense_count_today()
@@ -151,6 +158,56 @@ class _DailyStatsCollector:
         )
         g2.add_metric([], float(msg_count))
         yield g2
+
+        # ── Backup filesystem stats ──────────────────────────────────────────
+        keep_days = int(os.getenv("BACKUP_KEEP_DAYS", 30))
+
+        try:
+            db_path    = os.getenv("DB_PATH", "/data/expenses.db")
+            backup_dir = os.path.join(os.path.dirname(db_path), "backups")
+            backups    = sorted(glob.glob(os.path.join(backup_dir, "expenses_*.db")))
+
+            backup_count = len(backups)
+            if backups:
+                latest      = backups[-1]
+                mtime       = os.path.getmtime(latest)
+                age_seconds = time.time() - mtime
+                size_bytes  = os.path.getsize(latest)
+            else:
+                age_seconds = -1   # -1 = no backup ever taken
+                size_bytes  = 0
+        except Exception:
+            backup_count = 0
+            age_seconds  = -1
+            size_bytes   = 0
+
+        g3 = GaugeMetricFamily(
+            "expense_tracker_last_backup_age_seconds",
+            "Seconds elapsed since the most recent DB backup (-1 if no backup exists)",
+        )
+        g3.add_metric([], float(age_seconds))
+        yield g3
+
+        g4 = GaugeMetricFamily(
+            "expense_tracker_backup_count",
+            "Number of DB backup files currently on disk",
+        )
+        g4.add_metric([], float(backup_count))
+        yield g4
+
+        g5 = GaugeMetricFamily(
+            "expense_tracker_last_backup_size_bytes",
+            "File size in bytes of the most recent DB backup",
+        )
+        g5.add_metric([], float(size_bytes))
+        yield g5
+
+        g6 = GaugeMetricFamily(
+            "expense_tracker_backup_keep_days",
+            "Configured backup retention limit (BACKUP_KEEP_DAYS env var)",
+        )
+        g6.add_metric([], float(keep_days))
+        yield g6
 
 
 # Register once — guard against double-import during Flask startup

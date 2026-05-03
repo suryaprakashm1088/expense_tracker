@@ -214,11 +214,99 @@
         "thresholds": {"steps": [{"value": 0, "color": "red"}, {"value": 0.8, "color": "yellow"}, {"value": 0.95, "color": "green"}]}}}
     },
 
-    { "id": 50, "type": "row", "title": "📋 Application Logs", "gridPos": {"x":0,"y":55,"w":24,"h":1}, "collapsed": false },
+    { "id": 60, "type": "row", "title": "💾 DB Backup", "gridPos": {"x":0,"y":55,"w":24,"h":1}, "collapsed": false },
+
+    {
+      "id": 61, "type": "stat", "title": "Last Backup",
+      "gridPos": {"x":0,"y":56,"w":6,"h":4},
+      "datasource": "Prometheus",
+      "targets": [{"expr": "expense_tracker_last_backup_age_seconds", "legendFormat": "age"}],
+      "options": {
+        "reduceOptions": {"calcs": ["lastNotNull"]},
+        "colorMode": "background",
+        "text": {}
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": {"mode": "thresholds"},
+          "thresholds": {"steps": [
+            {"value": 0,      "color": "green"},
+            {"value": 90000,  "color": "yellow"},
+            {"value": 172800, "color": "red"}
+          ]},
+          "mappings": [{"type": "value", "options": {"-1": {"text": "No backup yet", "color": "orange", "index": 0}}}]
+        }
+      }
+    },
+
+    {
+      "id": 62, "type": "stat", "title": "Backups on Disk",
+      "gridPos": {"x":6,"y":56,"w":6,"h":4},
+      "datasource": "Prometheus",
+      "targets": [{"expr": "expense_tracker_backup_count / expense_tracker_backup_keep_days", "legendFormat": "fill"}],
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background"},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0, "max": 1,
+          "color": {"mode": "thresholds"},
+          "thresholds": {"steps": [
+            {"value": 0,    "color": "red"},
+            {"value": 0.25, "color": "yellow"},
+            {"value": 0.75, "color": "green"}
+          ]}
+        }
+      }
+    },
+
+    {
+      "id": 63, "type": "stat", "title": "Last Backup Size",
+      "gridPos": {"x":12,"y":56,"w":6,"h":4},
+      "datasource": "Prometheus",
+      "targets": [{"expr": "expense_tracker_last_backup_size_bytes", "legendFormat": "size"}],
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background"},
+      "fieldConfig": {"defaults": {"unit": "bytes", "color": {"mode": "fixed", "fixedColor": "blue"}}}
+    },
+
+    {
+      "id": 64, "type": "stat", "title": "Backup Retention (configured)",
+      "gridPos": {"x":18,"y":56,"w":6,"h":4},
+      "datasource": "Prometheus",
+      "targets": [{"expr": "expense_tracker_backup_keep_days", "legendFormat": "days"}],
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background"},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "d",
+          "color": {"mode": "fixed", "fixedColor": "purple"}
+        }
+      }
+    },
+
+    {
+      "id": 65, "type": "timeseries", "title": "Backup Size Over Time",
+      "gridPos": {"x":0,"y":60,"w":12,"h":6},
+      "datasource": "Prometheus",
+      "targets": [{"expr": "expense_tracker_last_backup_size_bytes", "legendFormat": "backup size"}],
+      "fieldConfig": {"defaults": {"unit": "bytes"}},
+      "options": {"tooltip": {"mode": "single"}}
+    },
+
+    {
+      "id": 66, "type": "timeseries", "title": "Backup Age Over Time",
+      "gridPos": {"x":12,"y":60,"w":12,"h":6},
+      "datasource": "Prometheus",
+      "targets": [{"expr": "expense_tracker_last_backup_age_seconds / 3600", "legendFormat": "hours since last backup"}],
+      "fieldConfig": {"defaults": {"unit": "h", "color": {"mode": "thresholds"},
+        "thresholds": {"steps": [{"value": 0, "color": "green"}, {"value": 25, "color": "yellow"}, {"value": 48, "color": "red"}]}}},
+      "options": {"tooltip": {"mode": "single"}}
+    },
+
+    { "id": 50, "type": "row", "title": "📋 Application Logs", "gridPos": {"x":0,"y":66,"w":24,"h":1}, "collapsed": false },
 
     {
       "id": 51, "type": "logs", "title": "expense_tracker container logs",
-      "gridPos": {"x":0,"y":56,"w":24,"h":10},
+      "gridPos": {"x":0,"y":67,"w":24,"h":10},
       "datasource": "Loki",
       "targets": [{"expr": "{container=\"/expense_tracker\"}", "legendFormat": ""}],
       "options": {"showTime": true, "showLabels": true, "wrapLogMessage": true, "sortOrder": "Descending",
@@ -227,7 +315,7 @@
 
     {
       "id": 52, "type": "logs", "title": "Error logs only",
-      "gridPos": {"x":0,"y":66,"w":24,"h":8},
+      "gridPos": {"x":0,"y":77,"w":24,"h":8},
       "datasource": "Loki",
       "targets": [{"expr": "{container=\"/expense_tracker\"} |~ \"(?i)(error|exception|traceback|critical)\"", "legendFormat": ""}],
       "options": {"showTime": true, "showLabels": false, "wrapLogMessage": true, "sortOrder": "Descending",
