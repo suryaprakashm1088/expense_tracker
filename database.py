@@ -440,6 +440,69 @@ def init_db():
         )
     """)
 
+    # ── investment_portfolios ─────────────────────────────────────────────────
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS investment_portfolios (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            name       TEXT    NOT NULL,
+            family_id  INTEGER,
+            created_at DATETIME NOT NULL
+        )
+    """)
+
+    # ── investment_holdings ───────────────────────────────────────────────────
+    # asset_type: 'stock' | 'mf'  (mutual fund)
+    # provider:   'eodhd' | 'mfapi' | 'manual'
+    # ticker:     EODHD code for stocks (e.g. "RELIANCE.NSE"), MFAPI scheme code for MFs
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS investment_holdings (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            portfolio_id   INTEGER,
+            family_id      INTEGER,
+            name           TEXT    NOT NULL,
+            ticker         TEXT,
+            asset_type     TEXT    NOT NULL DEFAULT 'stock',
+            provider       TEXT    NOT NULL DEFAULT 'manual',
+            quantity       REAL    NOT NULL DEFAULT 0,
+            buy_price      REAL,
+            currency       TEXT    NOT NULL DEFAULT 'SGD',
+            notes          TEXT,
+            is_active      INTEGER NOT NULL DEFAULT 1,
+            created_at     DATETIME NOT NULL,
+            updated_at     DATETIME
+        )
+    """)
+
+    # ── investment_price_snapshots ────────────────────────────────────────────
+    # One row per holding per day (latest price on that day)
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS investment_price_snapshots (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            holding_id  INTEGER NOT NULL,
+            price_date  TEXT    NOT NULL,
+            price       REAL    NOT NULL,
+            currency    TEXT    NOT NULL DEFAULT 'SGD',
+            source      TEXT,
+            fetched_at  DATETIME NOT NULL,
+            UNIQUE(holding_id, price_date)
+        )
+    """)
+
+    # ── investment_refresh_runs ───────────────────────────────────────────────
+    # Audit log for each daily refresh attempt
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS investment_refresh_runs (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            started_at    DATETIME NOT NULL,
+            finished_at   DATETIME,
+            holdings_total   INTEGER DEFAULT 0,
+            holdings_updated INTEGER DEFAULT 0,
+            holdings_failed  INTEGER DEFAULT 0,
+            triggered_by  TEXT    NOT NULL DEFAULT 'scheduler',
+            error_log     TEXT
+        )
+    """)
+
     # Seed default admin if table is empty — generate a one-time password (OTP)
     existing = c.execute("SELECT COUNT(*) FROM admin_credentials").fetchone()[0]
     if existing == 0:
@@ -1654,3 +1717,236 @@ def get_whatsapp_message_log(days=30, family_id=None):
     rows = conn.execute(q, params).fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Investments — Portfolios
+# ─────────────────────────────────────────────────────────────────────────────
+
+def get_all_portfolios(family_id=None):
+    conn = get_connection()
+    if family_id:
+        rows = conn.execute(
+            "SELECT * FROM investment_portfolios WHERE family_id=? ORDER BY name",
+            (family_id,),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT * FROM investment_portfolios ORDER BY name"
+        ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def add_portfolio(name, family_id=None):
+    conn = get_connection()
+    conn.execute(
+        "INSERT INTO investment_portfolios (name, family_id, created_at) VALUES (?, ?, ?)",
+        (name.strip(), family_id, datetime.now().isoformat()),
+    )
+    conn.commit()
+    pid = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.close()
+    return pid
+
+
+def delete_portfolio(portfolio_id):
+    conn = get_connection()
+    conn.execute("DELETE FROM investment_portfolios WHERE id=?", (portfolio_id,))
+    conn.commit()
+    conn.close()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Investments — Holdings
+# ─────────────────────────────────────────────────────────────────────────────
+
+def get_holdings(family_id=None, portfolio_id=None, active_only=True):
+    conn = get_connection()
+    where = []
+    params = []
+    if active_only:
+        where.append("h.is_active=1")
+    if family_id:
+        where.append("h.family_id=?")
+        params.append(family_id)
+    if portfolio_id:
+        where.append("h.portfolio_id=?")
+        params.append(portfolio_id)
+    clause = ("WHERE " + " AND ".join(where)) if where else ""
+    rows = conn.execute(f"""
+        SELECT h.*,
+               s.price      AS latest_price,
+               s.price_date AS price_date,
+               s.currency   AS price_currency
+        FROM investment_holdings h
+        LEFT JOIN investment_price_snapshots s
+            ON s.holding_id = h.id
+            AND s.price_date = (
+                SELECT MAX(price_date) FROM investment_price_snapshots
+                WHERE holding_id = h.id
+            )
+        {clause}
+        ORDER BY h.name
+    """, params).fetchall()
+    conn.close()
+    result = []
+    for r in rows:
+        d = dict(r)
+        qty = d.get("quantity") or 0
+        price = d.get("latest_price") or d.get("buy_price") or 0
+        d["current_value"] = round(qty * price, 2)
+        d["gain_loss"] = round(qty * (price - (d.get("buy_price") or 0)), 2) if d.get("buy_price") else None
+        result.append(d)
+    return result
+
+
+def get_holding(holding_id):
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT * FROM investment_holdings WHERE id=?", (holding_id,)
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def add_holding(name, ticker, asset_type, provider, quantity, buy_price,
+                currency="SGD", notes=None, portfolio_id=None, family_id=None):
+    now = datetime.now().isoformat()
+    conn = get_connection()
+    conn.execute(
+        """INSERT INTO investment_holdings
+           (name, ticker, asset_type, provider, quantity, buy_price, currency,
+            notes, portfolio_id, family_id, is_active, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)""",
+        (name.strip(), (ticker or "").strip().upper(), asset_type, provider,
+         quantity, buy_price, currency, notes, portfolio_id, family_id, now, now),
+    )
+    conn.commit()
+    hid = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.close()
+    return hid
+
+
+def update_holding(holding_id, **kwargs):
+    allowed = {"name", "ticker", "asset_type", "provider", "quantity",
+               "buy_price", "currency", "notes", "portfolio_id", "is_active"}
+    fields = {k: v for k, v in kwargs.items() if k in allowed}
+    if not fields:
+        return
+    fields["updated_at"] = datetime.now().isoformat()
+    set_clause = ", ".join(f"{k}=?" for k in fields)
+    values = list(fields.values()) + [holding_id]
+    conn = get_connection()
+    conn.execute(f"UPDATE investment_holdings SET {set_clause} WHERE id=?", values)
+    conn.commit()
+    conn.close()
+
+
+def delete_holding(holding_id):
+    conn = get_connection()
+    conn.execute("DELETE FROM investment_price_snapshots WHERE holding_id=?", (holding_id,))
+    conn.execute("DELETE FROM investment_holdings WHERE id=?", (holding_id,))
+    conn.commit()
+    conn.close()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Investments — Price snapshots
+# ─────────────────────────────────────────────────────────────────────────────
+
+def upsert_price_snapshot(holding_id, price_date, price, currency="SGD", source=None):
+    """Insert or replace a price snapshot for a holding on a given date."""
+    conn = get_connection()
+    conn.execute(
+        """INSERT INTO investment_price_snapshots
+           (holding_id, price_date, price, currency, source, fetched_at)
+           VALUES (?, ?, ?, ?, ?, ?)
+           ON CONFLICT(holding_id, price_date) DO UPDATE SET
+               price=excluded.price,
+               currency=excluded.currency,
+               source=excluded.source,
+               fetched_at=excluded.fetched_at""",
+        (holding_id, price_date, price, currency, source, datetime.now().isoformat()),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_price_history(holding_id, days=30):
+    conn = get_connection()
+    rows = conn.execute(
+        """SELECT price_date, price, currency, source
+           FROM investment_price_snapshots
+           WHERE holding_id=? AND price_date >= date('now', ?)
+           ORDER BY price_date""",
+        (holding_id, f"-{days} days"),
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_latest_snapshot(holding_id):
+    conn = get_connection()
+    row = conn.execute(
+        """SELECT * FROM investment_price_snapshots
+           WHERE holding_id=? ORDER BY price_date DESC LIMIT 1""",
+        (holding_id,),
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Investments — Refresh runs
+# ─────────────────────────────────────────────────────────────────────────────
+
+def start_refresh_run(triggered_by="scheduler"):
+    conn = get_connection()
+    conn.execute(
+        """INSERT INTO investment_refresh_runs
+           (started_at, holdings_total, holdings_updated, holdings_failed, triggered_by)
+           VALUES (?, 0, 0, 0, ?)""",
+        (datetime.now().isoformat(), triggered_by),
+    )
+    conn.commit()
+    rid = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.close()
+    return rid
+
+
+def finish_refresh_run(run_id, total, updated, failed, error_log=None):
+    conn = get_connection()
+    conn.execute(
+        """UPDATE investment_refresh_runs SET
+           finished_at=?, holdings_total=?, holdings_updated=?, holdings_failed=?, error_log=?
+           WHERE id=?""",
+        (datetime.now().isoformat(), total, updated, failed, error_log, run_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_last_refresh_run():
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT * FROM investment_refresh_runs ORDER BY started_at DESC LIMIT 1"
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def get_portfolio_summary(family_id=None):
+    """Return aggregate valuation stats across all active holdings."""
+    holdings = get_holdings(family_id=family_id, active_only=True)
+    total_invested = sum((h.get("buy_price") or 0) * (h.get("quantity") or 0) for h in holdings)
+    total_current  = sum(h.get("current_value") or 0 for h in holdings)
+    gain_loss      = total_current - total_invested
+    gain_pct       = (gain_loss / total_invested * 100) if total_invested else 0
+    return {
+        "holdings_count": len(holdings),
+        "total_invested": round(total_invested, 2),
+        "total_current":  round(total_current, 2),
+        "gain_loss":      round(gain_loss, 2),
+        "gain_pct":       round(gain_pct, 2),
+    }

@@ -14,7 +14,8 @@ A **self-hosted** personal expense tracker with a WhatsApp bot so your family ca
 | 💳 **Statement import** | Upload bank CSV or PDF — auto-categorises all transactions |
 | 💰 **Budget planning** | Track income, fixed expenses, and projected savings |
 | 🤖 **AI daily summary** | WhatsApp digest every night powered by Claude |
-| 📈 **Monitoring** | Prometheus + Grafana dashboards + Loki logs |
+| 📈 **Investments** | Track stocks and mutual funds — auto-fetches daily prices from EODHD & MFAPI |
+| 📊 **Monitoring** | Prometheus + Grafana dashboards + Loki logs |
 | 💾 **Auto backup** | SQLite backup every night at 02:00 SGT, 30-day rotation |
 | 👨‍👩‍👧 **Multi-member** | Invite codes or self-registration with admin approval |
 | 🔒 **Web login** | Members log in to view reports; admin controls everything |
@@ -56,6 +57,7 @@ Both options above work with either Twilio mode:
 - [ ] **Domain name** (~$10/yr, Option 2 only) → any registrar
 - [ ] **Anthropic API key** *(optional — AI summaries + receipt cloud fallback)* → [console.anthropic.com](https://console.anthropic.com)
 - [ ] **LM Studio** *(optional — local AI on Mac M-series)* → [lmstudio.ai](https://lmstudio.ai)
+- [ ] **EODHD API key** *(optional — live stock prices for investments)* → [eodhd.com](https://eodhd.com)
 
 ---
 
@@ -95,6 +97,8 @@ Copy `.env.example` → `.env` and fill in:
 | `DASHBOARD_URL` | WhatsApp bot | Your ngrok URL or `https://yourdomain.com` |
 | `GRAFANA_ADMIN_PASSWORD` | Monitoring | Choose a strong password |
 | `ANTHROPIC_API_KEY` | Optional | [console.anthropic.com](https://console.anthropic.com) |
+| `EODHD_API_KEY` | Optional (investments) | [eodhd.com](https://eodhd.com) → Register → API Tokens |
+| `INVESTMENT_REFRESH_HOUR` | Optional | UTC hour for daily price refresh (default `9` = 17:00 SGT) |
 | `CLOUDFLARE_TUNNEL_TOKEN` | Option 2 only | Cloudflare Zero Trust dashboard |
 
 > ⚠️ Never commit `.env` to git. It is already in `.gitignore`.
@@ -151,6 +155,58 @@ Receipt scanning uses a three-tier fallback — tries each in order:
 All AI is optional. The app works without any of these — receipt photos just won't be auto-scanned.
 
 See [SETUP_DOCKER_AI.md](SETUP_DOCKER_AI.md) for details.
+
+---
+
+## Investments (optional)
+
+Track your stock and mutual fund portfolio from the **Investments** page in the sidebar.
+
+### Supported data sources
+
+| Provider | What it covers | Key required? |
+|---|---|---|
+| **EODHD** | Global stocks, NSE/BSE Indian equities, ETFs | Yes — free tier, 20 calls/day |
+| **MFAPI.in** | Indian mutual fund NAV (AMFI) | No — completely free |
+| **Manual** | Any asset — enter price manually | No |
+
+### Setup
+
+**1. Get a free EODHD API key** (for stock prices):
+1. Register at [eodhd.com](https://eodhd.com)
+2. Go to **API Tokens** in your account
+3. Copy the key and add it to your `.env`:
+   ```
+   EODHD_API_KEY=your_key_here
+   ```
+4. Restart the app: `docker compose -f docker-compose.local.yml up -d --build app`
+
+> Free tier gives 20 API calls/day — enough for a personal portfolio of up to ~20 stocks. Indian mutual funds via MFAPI are free and require no key.
+
+**2. Add your holdings** in the dashboard:
+- Go to **Investments** in the sidebar
+- Click **+ Add Holding**
+- Choose asset type: **Stock / ETF** (EODHD) or **Mutual Fund** (MFAPI)
+- Use the live search box to find tickers by name — e.g. type "Reliance" to find `RELIANCE.NSE`
+
+### Ticker format (EODHD stocks)
+
+| Exchange | Format | Example |
+|---|---|---|
+| NSE (India) | `SYMBOL.NSE` | `RELIANCE.NSE` |
+| BSE (India) | `SYMBOL.BSE` | `INFY.BSE` |
+| US stocks | `SYMBOL.US` | `AAPL.US` |
+| Singapore (SGX) | `SYMBOL.SGX` | `D05.SGX` |
+| Hong Kong | `SYMBOL.HK` | `0700.HK` |
+
+### Automatic daily refresh
+
+Prices are refreshed automatically every day at **17:00 SGT (09:00 UTC)** — after Indian markets close. You can also trigger a manual refresh anytime from the Investments page.
+
+To change the refresh time, set `INVESTMENT_REFRESH_HOUR` (UTC) in your `.env`:
+```
+INVESTMENT_REFRESH_HOUR=9    # 9 UTC = 17:00 SGT
+```
 
 ---
 
@@ -215,7 +271,9 @@ expense_tracker/
 │   ├── whatsapp_bot.py         ← WhatsApp handling
 │   ├── receipt.py              ← AI receipt scanning
 │   ├── statement_parser.py     ← Bank statement CSV/PDF parsing
-│   └── scheduler.py            ← Nightly backup + AI summary
+│   ├── investment_providers.py ← EODHD + MFAPI price providers
+│   ├── investment_fetcher.py   ← Daily price refresh orchestrator
+│   └── scheduler.py            ← Nightly backup + AI summary + price refresh
 ├── templates/                  ← HTML templates
 └── monitoring/                 ← Grafana + Prometheus + Loki stack
 ```
@@ -229,6 +287,7 @@ expense_tracker/
 | [DEPLOY_NGROK.md](DEPLOY_NGROK.md) | **Option 1:** Full setup — ngrok, no domain needed |
 | [DEPLOY_CLOUDFLARE.md](DEPLOY_CLOUDFLARE.md) | **Option 2:** Full setup — custom domain via Cloudflare |
 | [SETUP_DOCKER_AI.md](SETUP_DOCKER_AI.md) | LM Studio + Ollama local AI setup |
+| [README.md → Investments](#investments-optional) | EODHD + MFAPI stock/fund tracking setup |
 
 ---
 
@@ -237,7 +296,9 @@ expense_tracker/
 - **Flask + Gunicorn** (1 worker, 4 threads) + **SQLite**
 - **Bootstrap 5 + Chart.js**
 - **Twilio** — WhatsApp webhook
-- **APScheduler** — nightly backup + AI summary jobs
+- **APScheduler** — nightly backup, AI summary, daily price refresh jobs
+- **EODHD API** — global stock end-of-day prices
+- **MFAPI.in** — Indian mutual fund NAV (free)
 - **LM Studio / Ollama / Claude** — AI tier stack
 - **Prometheus + Grafana + Loki** — monitoring
 - **Docker** — containerised deployment

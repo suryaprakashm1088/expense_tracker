@@ -11,3 +11,4 @@ from routes import budget        # noqa: F401
 from routes import credit_cards  # noqa: F401
 from routes import admin         # noqa: F401
 from routes import whatsapp      # noqa: F401
+from routes import investments   # noqa: F401

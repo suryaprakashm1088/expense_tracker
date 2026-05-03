@@ -234,6 +234,9 @@
     <a class="nav-link {% if request.endpoint in ['statement_upload','statement_review'] %}active{% endif %}" href="{{ url_for('statement_upload') }}">
       <i class="bi bi-file-earmark-arrow-up" style="color:#8b5cf6"></i> Import Statement
     </a>
+    <a class="nav-link {% if request.endpoint in ['investments','investment_add','investment_edit','investment_delete','investment_refresh_all','investment_refresh_one','investment_search','investment_history'] %}active{% endif %}" href="{{ url_for('investments') }}">
+      <i class="bi bi-graph-up-arrow" style="color:#0d9488"></i> Investments
+    </a>
 
   {# Admin-only navigation #}
   {% if session.get('admin_logged_in') %}

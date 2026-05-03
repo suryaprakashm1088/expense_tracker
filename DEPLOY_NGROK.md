@@ -306,7 +306,55 @@ The **Expense Tracker** dashboard loads automatically — shows HTTP metrics, ex
 
 ---
 
-## Part 8 — AI receipt scanning (optional)
+## Part 8 — Investments (optional)
+
+Track stocks and mutual funds with automatic daily price updates.
+
+### Step 16 — Get a free EODHD API key (for stock prices)
+
+1. Register at [eodhd.com](https://eodhd.com) — free account
+2. Go to **API Tokens** in your dashboard
+3. Copy your key and add it to `.env`:
+
+```bash
+EODHD_API_KEY=your_key_here
+```
+
+4. Rebuild the app container:
+
+**🍎 Mac / 🪟 Windows:**
+```bash
+docker compose -f docker-compose.local.yml up -d --build app
+```
+
+> **Free tier:** 20 API calls/day — covers a personal portfolio of up to ~20 stocks.
+> Indian mutual fund prices (via **MFAPI.in**) require no key and are always free.
+
+### Step 17 — Add your first holding
+
+1. Open the dashboard → click **Investments** in the left sidebar
+2. Click **+ Add Holding**
+3. Choose type: **Stock / ETF** or **Mutual Fund (Indian)**
+4. Start typing a company name in the Ticker field — live search finds the right code:
+   - Type `Reliance` → select `RELIANCE.NSE`
+   - Type `Mirae` → select the MFAPI scheme code
+5. Enter your quantity and buy price
+6. Click **Add Holding** — price is fetched immediately
+
+### Ticker format reference
+
+| Exchange | Format | Example |
+|---|---|---|
+| NSE (India) | `SYMBOL.NSE` | `RELIANCE.NSE` |
+| BSE (India) | `SYMBOL.BSE` | `INFY.BSE` |
+| US stocks | `SYMBOL.US` | `AAPL.US` |
+| Singapore SGX | `SYMBOL.SGX` | `D05.SGX` |
+
+Prices refresh automatically every day at **17:00 SGT (09:00 UTC)**. You can also hit **Refresh Prices** manually anytime.
+
+---
+
+## Part 9 — AI receipt scanning (optional)
 
 The app works without any AI. If you want receipt photos to be auto-scanned, the app tries these in order: **LM Studio → Ollama → Claude Vision API**
 
@@ -424,6 +472,7 @@ docker compose -f docker-compose.local.yml up -d --build app
 - [ ] If using paid Twilio number — WhatsApp Business approval completed (1–3 days)
 - [ ] If using LM Studio — Local Server is started inside the app
 - [ ] `ANTHROPIC_API_KEY` set if you want AI daily summaries
+- [ ] `EODHD_API_KEY` set if you want automatic stock price updates
 - [ ] **Windows only:** WSL 2 enabled and Docker Desktop showing "Engine running"
 
 ---
@@ -439,6 +488,8 @@ docker compose -f docker-compose.local.yml up -d --build app
 | "Not a member" reply from bot | Member isn't approved — check the Members page in the dashboard |
 | Sandbox member can't use bot | They need to send `join <code>` to the Twilio number first |
 | Receipt scan returns nothing | Check LM Studio Local Server is started; or set `ANTHROPIC_API_KEY` |
+| Investment prices show "no data" | Check `EODHD_API_KEY` is set in `.env` and rebuild the app |
+| EODHD "invalid API token" error | Free key expired or quota exceeded (20 calls/day limit) |
 | Grafana shows no data | Check monitoring stack is running: `docker ps` |
 | Port 5001 in use (Mac) | `lsof -i :5001` to find the conflicting process |
 | Port 5001 in use (Windows) | `netstat -ano \| findstr :5001` then `taskkill /PID <pid> /F` |

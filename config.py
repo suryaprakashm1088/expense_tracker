@@ -15,6 +15,10 @@ TWILIO_NUMBER       = os.environ.get("TWILIO_WHATSAPP_NUMBER", "")
 ANTHROPIC_API_KEY   = os.environ.get("ANTHROPIC_API_KEY", "")
 DASHBOARD_URL       = os.environ.get("DASHBOARD_URL", "http://127.0.0.1:5001")
 
+# ── Investments ───────────────────────────────────────────────────────────────
+EODHD_API_KEY           = os.environ.get("EODHD_API_KEY", "")
+INVESTMENT_REFRESH_HOUR = int(os.environ.get("INVESTMENT_REFRESH_HOUR", "9"))   # UTC; 9 UTC = 17:00 SGT
+
 # ── Month names (1-indexed; index 0 is empty string) ─────────────────────────
 MONTH_NAMES = [
     "", "January", "February", "March", "April", "May", "June",
@@ -166,6 +170,10 @@ MEMBER_ALLOWED = {
     'credit_cards', 'delete_cc_bill',
     'statement_upload', 'statement_review', 'add_statement_transaction',
     'api_category_detail', 'api_monthly_data',
+    # Investments
+    'investments', 'investment_add', 'investment_edit', 'investment_delete',
+    'investment_refresh_all', 'investment_refresh_one',
+    'investment_search', 'investment_history',
 }
 
 ADMIN_ONLY = {

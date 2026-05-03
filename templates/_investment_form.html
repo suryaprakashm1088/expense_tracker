@@ -1,0 +1,82 @@
+{# Shared form fields used by both Add and Edit modals in investments.html #}
+<div class="row g-3">
+
+  <div class="col-12 col-md-6">
+    <label class="form-label fw-semibold">Holding Name <span class="text-danger">*</span></label>
+    <input type="text" name="name" class="form-control" placeholder="e.g. Reliance Industries" required>
+  </div>
+
+  <div class="col-12 col-md-6">
+    <label class="form-label fw-semibold">Asset Type</label>
+    <select name="asset_type" class="form-select">
+      <option value="stock">Stock / ETF</option>
+      <option value="mf">Mutual Fund (Indian)</option>
+      <option value="manual">Manual (other)</option>
+    </select>
+  </div>
+
+  <div class="col-12 col-md-6">
+    <label class="form-label fw-semibold ticker-label">Ticker Symbol</label>
+    <div class="position-relative">
+      <input type="text" name="ticker" class="form-control ticker-input"
+             placeholder="e.g. RELIANCE.NSE or 100119" autocomplete="off">
+    </div>
+    <div class="form-text ticker-help">Exchange-suffixed ticker, e.g. RELIANCE.NSE, AAPL.US, D05.SGX</div>
+  </div>
+
+  <div class="col-12 col-md-6">
+    <label class="form-label fw-semibold">Data Provider</label>
+    <select name="provider" class="form-select">
+      <option value="eodhd">EODHD (global stocks)</option>
+      <option value="manual">Manual (no auto-fetch)</option>
+    </select>
+    <div class="form-text">
+      <a href="https://eodhd.com" target="_blank" rel="noopener">EODHD</a> — global stocks &amp; NSE/BSE.
+      <a href="https://mfapi.in" target="_blank" rel="noopener">MFAPI</a> — Indian mutual funds (free).
+    </div>
+  </div>
+
+  <div class="col-6 col-md-3">
+    <label class="form-label fw-semibold">Quantity</label>
+    <input type="number" name="quantity" class="form-control" step="any" min="0" value="0" placeholder="0">
+  </div>
+
+  <div class="col-6 col-md-3">
+    <label class="form-label fw-semibold">Buy Price</label>
+    <input type="number" name="buy_price" class="form-control" step="any" min="0" placeholder="optional">
+    <div class="form-text">Average cost per unit</div>
+  </div>
+
+  <div class="col-6 col-md-3">
+    <label class="form-label fw-semibold">Currency</label>
+    <select name="currency" class="form-select">
+      <option value="SGD">SGD</option>
+      <option value="INR">INR</option>
+      <option value="USD">USD</option>
+      <option value="HKD">HKD</option>
+      <option value="GBP">GBP</option>
+      <option value="EUR">EUR</option>
+      <option value="JPY">JPY</option>
+      <option value="AUD">AUD</option>
+      <option value="CAD">CAD</option>
+      <option value="MYR">MYR</option>
+    </select>
+  </div>
+
+  <div class="col-6 col-md-3">
+    <label class="form-label fw-semibold">Portfolio</label>
+    <select name="portfolio_id" class="form-select">
+      <option value="">— No portfolio —</option>
+      {% for p in portfolios %}
+      <option value="{{ p.id }}">{{ p.name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="col-12">
+    <label class="form-label fw-semibold">Notes</label>
+    <textarea name="notes" class="form-control" rows="2"
+              placeholder="Optional: sector, strategy, broker account…"></textarea>
+  </div>
+
+</div>

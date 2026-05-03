@@ -139,17 +139,32 @@ def send_daily_summary():
                 pass
 
 
+def refresh_investments():
+    """Trigger daily investment price refresh."""
+    try:
+        from services.investment_fetcher import refresh_all_holdings
+        result = refresh_all_holdings(triggered_by="scheduler")
+        app.logger.info(
+            "Investment refresh: %d/%d updated, %d failed",
+            result["updated"], result["total"], result["failed"],
+        )
+    except Exception as exc:
+        app.logger.warning("Investment refresh failed: %s", exc)
+
+
 def start_scheduler():
     """Start the APScheduler background scheduler.
 
     Jobs (all times in UTC):
-      02:00 SGT = 18:00 UTC  → backup_database()     (hot SQLite backup → /data/backups/)
-      20:00 SGT = 12:00 UTC  → send_daily_summary()  (AI WhatsApp digest)
+      02:00 SGT = 18:00 UTC  → backup_database()      (hot SQLite backup → /data/backups/)
+      20:00 SGT = 12:00 UTC  → send_daily_summary()   (AI WhatsApp digest)
+      17:00 SGT = 09:00 UTC  → refresh_investments()  (daily price fetch; configurable via INVESTMENT_REFRESH_HOUR)
 
     Silently skips if APScheduler is not installed (dev environments without it).
     """
     try:
         from apscheduler.schedulers.background import BackgroundScheduler
+        import os
         scheduler = BackgroundScheduler()
 
         # Daily DB backup — 02:00 SGT / 18:00 UTC
@@ -160,9 +175,15 @@ def start_scheduler():
         scheduler.add_job(send_daily_summary, "cron", hour=12, minute=0,
                           id="daily_summary", name="Daily WhatsApp summary")
 
+        # Daily investment price refresh — configurable hour (default 09:00 UTC = 17:00 SGT)
+        inv_hour = int(os.getenv("INVESTMENT_REFRESH_HOUR", "9"))
+        scheduler.add_job(refresh_investments, "cron", hour=inv_hour, minute=0,
+                          id="investment_refresh", name="Daily investment price refresh")
+
         scheduler.start()
         app.logger.info(
-            "Scheduler started — db_backup @ 18:00 UTC, daily_summary @ 12:00 UTC"
+            "Scheduler started — db_backup @ 18:00 UTC, daily_summary @ 12:00 UTC, "
+            "investment_refresh @ %02d:00 UTC", inv_hour,
         )
     except Exception as exc:
         app.logger.warning("Scheduler could not start: %s", exc)

@@ -317,7 +317,47 @@ The **Expense Tracker** dashboard loads automatically.
 
 ---
 
-## Part 9 — AI receipt scanning (optional)
+## Part 9 — Investments (optional)
+
+Track your stock and mutual fund portfolio with automatic daily price updates.
+
+### Step 15 — Get a free EODHD API key (for stock prices)
+
+1. Register at [eodhd.com](https://eodhd.com) — free account
+2. Go to **API Tokens** in your dashboard and copy your key
+3. Add it to your `.env`:
+
+```bash
+EODHD_API_KEY=your_key_here
+```
+
+4. Rebuild the app container:
+```bash
+docker compose -f docker-compose.local.yml up -d --build app
+```
+
+> **Free tier:** 20 API calls/day — sufficient for a personal portfolio of up to ~20 stocks.
+> **Indian mutual funds** via MFAPI.in are free with no key required.
+
+### Step 16 — Add your holdings
+
+1. Open your dashboard → click **Investments** in the left sidebar
+2. Click **+ Add Holding**, choose type (Stock / Mutual Fund / Manual)
+3. Use the live search to find tickers by name (e.g. type "Reliance" → select `RELIANCE.NSE`)
+4. Enter quantity and buy price → **Add Holding** — price fetches immediately
+
+| Exchange | Ticker Format | Example |
+|---|---|---|
+| NSE (India) | `SYMBOL.NSE` | `RELIANCE.NSE` |
+| BSE (India) | `SYMBOL.BSE` | `INFY.BSE` |
+| US stocks | `SYMBOL.US` | `AAPL.US` |
+| Singapore SGX | `SYMBOL.SGX` | `D05.SGX` |
+
+Prices refresh automatically every day at **17:00 SGT (09:00 UTC)**. Manual refresh is always available from the Investments page.
+
+---
+
+## Part 10 — AI receipt scanning (optional)
 
 The app tries these in order: **LM Studio → Ollama → Claude Vision API**
 
@@ -411,6 +451,7 @@ docker compose -f docker-compose.local.yml up -d --build app
 - [ ] If paid Twilio number — WhatsApp Business API approval done (1–3 days)
 - [ ] Domain nameservers point to Cloudflare (if not bought from Cloudflare)
 - [ ] `ANTHROPIC_API_KEY` set if you want AI summaries
+- [ ] `EODHD_API_KEY` set if you want automatic stock price updates (investments)
 - [ ] **Windows only:** WSL 2 enabled and Docker Desktop showing "Engine running"
 
 ---
@@ -426,6 +467,8 @@ docker compose -f docker-compose.local.yml up -d --build app
 | "Not a member" reply | Member not approved — check Members page in dashboard |
 | Sandbox member can't use bot | They haven't sent `join <code>` yet |
 | Receipt scan fails | Check LM Studio Local Server is started; or set `ANTHROPIC_API_KEY` |
+| Investment prices show "no data" | Check `EODHD_API_KEY` is set in `.env` and rebuild the app |
+| EODHD "invalid API token" error | Free key expired or quota exceeded (20 calls/day limit) |
 | App slow to load | Normal on first request after a long idle — gunicorn warms up in a second |
 | Container not starting | `docker compose -f docker-compose.local.yml logs` to see the full error |
 | Docker not starting (Windows) | Make sure WSL 2 is enabled and Docker Desktop shows "Engine running" |
