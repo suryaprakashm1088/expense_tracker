@@ -1,7 +1,28 @@
 import sqlite3
 import os
+import re
 import json
 from datetime import datetime, timedelta
+
+
+def _norm(s):
+    """Normalise a shop/vendor name for fuzzy matching.
+    Strips ALL non-alphanumeric characters (spaces, hyphens, dots, etc.)
+    and lowercases, so 'Sat Breakfast 13', 'sat-breakfast-13',
+    'sat breakfast-13' all compare as equal.
+    """
+    return re.sub(r'[^a-z0-9]', '', (s or '').lower())
+
+
+def _sql_norm(col):
+    """Return a SQL expression that normalises a column the same way _norm() does.
+    Strips spaces, hyphens, underscores, dots, commas, apostrophes, and slashes.
+    SQLite doesn't support regex, so we nest REPLACE() calls.
+    """
+    return (
+        f"REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE("
+        f"LOWER({col}), ' ', ''), '-', ''), '_', ''), '.', ''), ',', ''), '''', ''), '/', '')"
+    )
 
 # DB_PATH: use environment variable (set to /data/expenses.db in Docker)
 # Falls back to local expenses.db for development
@@ -235,11 +256,13 @@ def init_db():
         )
     """)
     for col, ddl in [
-        ("family_id", "INTEGER"),
-        ("is_admin",  "INTEGER DEFAULT 0"),
-        ("nickname",  "TEXT"),
-        ("joined_at", "DATETIME"),
-        ("added_by",  "TEXT"),
+        ("family_id",    "INTEGER"),
+        ("is_admin",     "INTEGER DEFAULT 0"),
+        ("nickname",     "TEXT"),
+        ("joined_at",    "DATETIME"),
+        ("added_by",     "TEXT"),
+        ("password_hash","TEXT"),
+        ("can_login",    "INTEGER DEFAULT 0"),
     ]:
         try:
             c.execute(f"ALTER TABLE members ADD COLUMN {col} {ddl}")
@@ -335,6 +358,47 @@ def init_db():
         )
     """)
 
+    # ── credit_card_bills ─────────────────────────────────────────────────────
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS credit_card_bills (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            bank_name   TEXT    NOT NULL,
+            amount      REAL    NOT NULL,
+            member_name TEXT    NOT NULL,
+            date        TEXT    NOT NULL,
+            month       INTEGER NOT NULL,
+            year        INTEGER NOT NULL,
+            note        TEXT,
+            family_id   INTEGER,
+            created_at  DATETIME NOT NULL
+        )
+    """)
+
+    # ── income_entries ────────────────────────────────────────────────────────
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS income_entries (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            description TEXT    NOT NULL,
+            amount      REAL    NOT NULL,
+            family_id   INTEGER,
+            created_at  DATETIME NOT NULL,
+            is_active   INTEGER NOT NULL DEFAULT 1
+        )
+    """)
+
+    # ── fixed_expenses ────────────────────────────────────────────────────────
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS fixed_expenses (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            description TEXT    NOT NULL,
+            amount      REAL    NOT NULL,
+            category    TEXT    NOT NULL DEFAULT 'Fixed',
+            family_id   INTEGER,
+            created_at  DATETIME NOT NULL,
+            is_active   INTEGER NOT NULL DEFAULT 1
+        )
+    """)
+
     # ── admin_credentials ─────────────────────────────────────────────────────
     c.execute("""
         CREATE TABLE IF NOT EXISTS admin_credentials (
@@ -343,18 +407,51 @@ def init_db():
             password_hash        TEXT    NOT NULL,
             must_change_password INTEGER NOT NULL DEFAULT 1,
             created_at           DATETIME NOT NULL,
-            updated_at           DATETIME
+            updated_at           DATETIME,
+            initial_otp          TEXT
+        )
+    """)
+    # Migration: add initial_otp column to existing databases
+    try:
+        c.execute("ALTER TABLE admin_credentials ADD COLUMN initial_otp TEXT")
+    except Exception:
+        pass
+
+    # ── statement_uploads ─────────────────────────────────────────────────────
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS statement_uploads (
+            id           TEXT    PRIMARY KEY,
+            family_id    INTEGER,
+            bank_name    TEXT,
+            filename     TEXT,
+            uploaded_at  TEXT    NOT NULL,
+            transactions TEXT    NOT NULL DEFAULT '[]'
         )
     """)
 
-    # Seed default admin if table is empty
+    # ── whatsapp_message_log ──────────────────────────────────────────────────
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS whatsapp_message_log (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            logged_at    TEXT    NOT NULL,
+            family_id    INTEGER,
+            from_number  TEXT,
+            message_type TEXT    NOT NULL DEFAULT 'unknown'
+        )
+    """)
+
+    # Seed default admin if table is empty — generate a one-time password (OTP)
     existing = c.execute("SELECT COUNT(*) FROM admin_credentials").fetchone()[0]
     if existing == 0:
+        import secrets as _sec
         from werkzeug.security import generate_password_hash
-        default_hash = generate_password_hash("Admin@123")
+        otp = _sec.token_urlsafe(8)   # e.g. "X7k2M9aB" — shown once on login page
+        otp_hash = generate_password_hash(otp)
         c.execute(
-            "INSERT INTO admin_credentials (id, username, password_hash, must_change_password, created_at) VALUES (1, 'admin', ?, 1, ?)",
-            (default_hash, datetime.now().isoformat()),
+            """INSERT INTO admin_credentials
+               (id, username, password_hash, must_change_password, created_at, initial_otp)
+               VALUES (1, 'admin', ?, 1, ?, ?)""",
+            (otp_hash, datetime.now().isoformat(), otp),
         )
 
     conn.commit()
@@ -528,12 +625,16 @@ def get_all_shop_mappings(family_id=None):
 
 
 def find_shop_in_text(text, family_id=None):
-    """Returns (shop_name, category) if a known shop is found in text, else (None, None)."""
-    text_lower = text.lower()
+    """Returns (shop_name, category) if a known shop is found in text, else (None, None).
+
+    Comparison is space-insensitive so 'FairPrice' and 'Fair Price' both match
+    a mapping stored as 'fairprice'.
+    """
+    text_norm = _norm(text)
     mappings = get_all_shop_mappings(family_id=family_id)
     for m in mappings:
-        shop = m["shop_name"].lower()
-        if shop in text_lower:
+        shop_norm = _norm(m["shop_name"])
+        if shop_norm and shop_norm in text_norm:
             return m["shop_name"], m["category"]
     return None, None
 
@@ -584,7 +685,19 @@ def get_all_members():
     rows = conn.execute(
         "SELECT m.*, f.name as family_name FROM members m "
         "LEFT JOIN families f ON f.id=m.family_id "
-        "ORDER BY m.added_on DESC"
+        "ORDER BY m.is_approved ASC, m.added_on DESC"
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_pending_members():
+    """Return members waiting for admin approval (is_approved=0)."""
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT m.*, f.name as family_name FROM members m "
+        "LEFT JOIN families f ON f.id=m.family_id "
+        "WHERE m.is_approved=0 ORDER BY m.added_on DESC"
     ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
@@ -613,6 +726,34 @@ def is_member_approved(whatsapp_number):
     ).fetchone()
     conn.close()
     return row is not None and row["is_approved"] == 1
+
+
+def approve_member(member_id, family_id=None):
+    """Approve a pending member and optionally assign a family."""
+    conn = get_connection()
+    if family_id:
+        conn.execute(
+            "UPDATE members SET is_approved=1, family_id=? WHERE id=?",
+            (family_id, member_id),
+        )
+    else:
+        conn.execute(
+            "UPDATE members SET is_approved=1 WHERE id=?",
+            (member_id,),
+        )
+    conn.commit()
+    conn.close()
+
+
+def update_member_family(member_id, family_id):
+    """Change (or clear) the family assignment for a member."""
+    conn = get_connection()
+    conn.execute(
+        "UPDATE members SET family_id=? WHERE id=?",
+        (family_id if family_id else None, member_id),
+    )
+    conn.commit()
+    conn.close()
 
 
 def toggle_member(member_id):
@@ -736,6 +877,65 @@ def check_recent_duplicate(added_by, amount, category, minutes=5):
         # If there's any match in the last 3 rows it's suspicious
         return len(rows) > 0
     return False
+
+
+def check_group_duplicate(amount, date_str, family_id, shop_name=None, title=None, excluded_added_by=None):
+    """
+    Check if any OTHER group member already logged the same amount
+    from the same outlet/shop on the same date.
+
+    Returns a dict with {added_by, amount, title, shop_name, category}
+    if a duplicate is found, else None.
+
+    Matching logic:
+      - Same amount (within ±0.01)
+      - Same date
+      - Same family_id (if provided)
+      - Same shop_name OR same title (case-insensitive)
+    """
+    if not family_id:
+        return None   # No family context — skip cross-member check
+
+    conn = get_connection()
+    params = [float(amount), date_str, family_id]
+
+    # Build the shop/title condition.
+    # Both the stored column value and the incoming value are normalised by
+    # stripping all non-alphanumeric characters (spaces, hyphens, dots…)
+    # and lowercasing. Python side: _norm(). SQL side: _sql_norm().
+    # This means "Sat Breakfast 13", "sat-breakfast-13", "sat breakfast-13"
+    # all compare as equal ("satbreakfast13").
+    shop_or_title_cond = ""
+    if shop_name:
+        norm_shop = _norm(shop_name)
+        shop_or_title_cond = (
+            f"AND ({_sql_norm('shop_name')} = ?"
+            f" OR {_sql_norm('title')} = ?)"
+        )
+        params += [norm_shop, norm_shop]
+    elif title:
+        norm_title = _norm(title)
+        shop_or_title_cond = f"AND {_sql_norm('title')} = ?"
+        params += [norm_title]
+    else:
+        conn.close()
+        return None  # Not enough info to match meaningfully
+
+    if excluded_added_by:
+        shop_or_title_cond += " AND added_by != ?"
+        params.append(excluded_added_by)
+
+    query = f"""
+        SELECT * FROM expenses
+        WHERE ABS(amount - ?) < 0.01
+          AND date = ?
+          AND family_id = ?
+          {shop_or_title_cond}
+        ORDER BY id DESC LIMIT 1
+    """
+    row = conn.execute(query, params).fetchone()
+    conn.close()
+    return dict(row) if row else None
 
 
 def delete_expense(expense_id):
@@ -1052,13 +1252,405 @@ def get_admin_credentials():
 
 
 def update_admin_credentials(new_username, new_password_hash):
-    """Update username and password; clears the must_change_password flag."""
+    """Update username and password; clears must_change_password and initial_otp."""
     conn = get_connection()
     conn.execute(
         """UPDATE admin_credentials
-           SET username=?, password_hash=?, must_change_password=0, updated_at=?
+           SET username=?, password_hash=?, must_change_password=0,
+               initial_otp=NULL, updated_at=?
            WHERE id=1""",
         (new_username, new_password_hash, datetime.now().isoformat()),
     )
     conn.commit()
     conn.close()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Member web login
+# ─────────────────────────────────────────────────────────────────────────────
+
+def set_member_password(member_id, password_hash):
+    """Set (or update) a member's web-login password and enable their login access."""
+    conn = get_connection()
+    conn.execute(
+        "UPDATE members SET password_hash=?, can_login=1 WHERE id=?",
+        (password_hash, member_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def revoke_member_login(member_id):
+    """Remove web-login access from a member."""
+    conn = get_connection()
+    conn.execute(
+        "UPDATE members SET password_hash=NULL, can_login=0 WHERE id=?",
+        (member_id,),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_member_for_login(whatsapp_number):
+    """Return an approved member with web-login enabled, or None."""
+    conn = get_connection()
+    row = conn.execute(
+        """SELECT * FROM members
+           WHERE whatsapp_number=? AND can_login=1 AND is_approved=1""",
+        (whatsapp_number,),
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Income Entries
+# ─────────────────────────────────────────────────────────────────────────────
+
+def add_income(description, amount, family_id=None):
+    conn = get_connection()
+    conn.execute(
+        "INSERT INTO income_entries (description, amount, family_id, created_at) VALUES (?, ?, ?, ?)",
+        (description.strip(), float(amount), family_id, datetime.now().isoformat()),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_all_income(family_id=None):
+    conn = get_connection()
+    if family_id:
+        rows = conn.execute(
+            "SELECT * FROM income_entries WHERE is_active=1 AND (family_id=? OR family_id IS NULL) ORDER BY id DESC",
+            (family_id,),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT * FROM income_entries WHERE is_active=1 ORDER BY id DESC"
+        ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def delete_income(income_id):
+    conn = get_connection()
+    conn.execute("UPDATE income_entries SET is_active=0 WHERE id=?", (income_id,))
+    conn.commit()
+    conn.close()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Fixed Expenses
+# ─────────────────────────────────────────────────────────────────────────────
+
+def add_fixed_expense(description, amount, category="Fixed", family_id=None):
+    conn = get_connection()
+    conn.execute(
+        "INSERT INTO fixed_expenses (description, amount, category, family_id, created_at) VALUES (?, ?, ?, ?, ?)",
+        (description.strip(), float(amount), category.strip(), family_id, datetime.now().isoformat()),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_all_fixed_expenses(family_id=None):
+    conn = get_connection()
+    if family_id:
+        rows = conn.execute(
+            "SELECT * FROM fixed_expenses WHERE is_active=1 AND (family_id=? OR family_id IS NULL) ORDER BY category, id",
+            (family_id,),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT * FROM fixed_expenses WHERE is_active=1 ORDER BY category, id"
+        ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def delete_fixed_expense(fe_id):
+    conn = get_connection()
+    conn.execute("UPDATE fixed_expenses SET is_active=0 WHERE id=?", (fe_id,))
+    conn.commit()
+    conn.close()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Credit Card Bills
+# ─────────────────────────────────────────────────────────────────────────────
+
+def add_cc_bill(bank_name, amount, member_name, date_str, note="", family_id=None):
+    conn = get_connection()
+    dt = datetime.strptime(date_str, "%Y-%m-%d")
+    conn.execute(
+        """INSERT INTO credit_card_bills
+           (bank_name, amount, member_name, date, month, year, note, family_id, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (bank_name.upper(), float(amount), member_name, date_str,
+         dt.month, dt.year, note, family_id, datetime.now().isoformat()),
+    )
+    bid = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.commit()
+    conn.close()
+    return bid
+
+
+def get_cc_bills(month=None, year=None, member_name=None, family_id=None):
+    conn = get_connection()
+    q = "SELECT * FROM credit_card_bills WHERE 1=1"
+    params = []
+    if month:
+        q += " AND month=?"
+        params.append(int(month))
+    if year:
+        q += " AND year=?"
+        params.append(int(year))
+    if member_name:
+        q += " AND member_name=?"
+        params.append(member_name)
+    if family_id:
+        q += " AND family_id=?"
+        params.append(family_id)
+    q += " ORDER BY date DESC, id DESC"
+    rows = conn.execute(q, params).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_cc_summary(month, year, family_id=None):
+    """Returns total CC bills grouped by member and bank for a given month/year."""
+    conn = get_connection()
+    q = """
+        SELECT member_name, bank_name, SUM(amount) as total, COUNT(*) as count
+        FROM credit_card_bills
+        WHERE month=? AND year=?
+    """
+    params = [int(month), int(year)]
+    if family_id:
+        q += " AND family_id=?"
+        params.append(family_id)
+    q += " GROUP BY member_name, bank_name ORDER BY member_name, total DESC"
+    rows = conn.execute(q, params).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def delete_cc_bill(bill_id):
+    conn = get_connection()
+    conn.execute("DELETE FROM credit_card_bills WHERE id=?", (bill_id,))
+    conn.commit()
+    conn.close()
+
+
+def get_cc_member_total(month, year, member_name, family_id=None):
+    """Total CC bills for one member this month."""
+    conn = get_connection()
+    q = "SELECT COALESCE(SUM(amount),0) as total FROM credit_card_bills WHERE month=? AND year=? AND member_name=?"
+    params = [int(month), int(year), member_name]
+    if family_id:
+        q += " AND family_id=?"
+        params.append(family_id)
+    total = conn.execute(q, params).fetchone()["total"]
+    conn.close()
+    return round(total, 2)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Enhanced Analytics — top spends by category
+# ─────────────────────────────────────────────────────────────────────────────
+
+def get_top_expenses_by_category(category, month, year, limit=5, family_id=None):
+    """Top N expenses for a category in a given month/year."""
+    conn = get_connection()
+    q = """SELECT * FROM expenses
+           WHERE category=?
+             AND strftime('%m', date)=?
+             AND strftime('%Y', date)=?"""
+    params = [category, f"{int(month):02d}", str(year)]
+    if family_id:
+        q += " AND family_id=?"
+        params.append(family_id)
+    q += " ORDER BY amount DESC LIMIT ?"
+    params.append(limit)
+    rows = conn.execute(q, params).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_top_expenses_this_week_by_category(category, limit=5, family_id=None):
+    """Top N expenses for a category in the last 7 days."""
+    conn = get_connection()
+    week_ago = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
+    q = """SELECT * FROM expenses
+           WHERE category=? AND date >= ?"""
+    params = [category, week_ago]
+    if family_id:
+        q += " AND family_id=?"
+        params.append(family_id)
+    q += " ORDER BY amount DESC LIMIT ?"
+    params.append(limit)
+    rows = conn.execute(q, params).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_all_top_by_category(month, year, limit=3, family_id=None):
+    """
+    Returns a dict {category: [top expenses]} for all categories
+    in the given month — used to render the drill-down on the summary page.
+    """
+    cats = get_all_categories()
+    result = {}
+    for cat in cats:
+        top = get_top_expenses_by_category(cat, month, year, limit=limit, family_id=family_id)
+        if top:
+            result[cat] = top
+    return result
+
+
+def get_budget_summary(month, year, family_id=None):
+    """Returns total income, total fixed expenses, and variable expenses for the month."""
+    income_entries = get_all_income(family_id=family_id)
+    fixed_entries  = get_all_fixed_expenses(family_id=family_id)
+    total_income   = sum(e["amount"] for e in income_entries)
+    total_fixed    = sum(e["amount"] for e in fixed_entries)
+
+    conn = get_connection()
+    query = """SELECT COALESCE(SUM(amount), 0) as total
+               FROM expenses
+               WHERE strftime('%m', date)=? AND strftime('%Y', date)=?"""
+    params = [f"{int(month):02d}", str(year)]
+    if family_id:
+        query += " AND family_id=?"
+        params.append(family_id)
+    variable_total = conn.execute(query, params).fetchone()["total"]
+    conn.close()
+
+    return {
+        "total_income":    round(total_income, 2),
+        "total_fixed":     round(total_fixed, 2),
+        "variable_total":  round(variable_total, 2),
+        "projected_net":   round(total_income - total_fixed - variable_total, 2),
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Statement uploads
+# ─────────────────────────────────────────────────────────────────────────────
+
+def save_statement_upload(upload_id, family_id, bank_name, filename, transactions):
+    """Persist parsed statement transactions linked to an upload UUID."""
+    conn = get_connection()
+    conn.execute(
+        """INSERT OR REPLACE INTO statement_uploads
+           (id, family_id, bank_name, filename, uploaded_at, transactions)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        (upload_id, family_id, bank_name, filename,
+         datetime.now().isoformat(), json.dumps(transactions)),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_statement_upload(upload_id):
+    """Return upload dict with transactions list, or None if not found."""
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT * FROM statement_uploads WHERE id=?", (upload_id,)
+    ).fetchone()
+    conn.close()
+    if not row:
+        return None
+    result = dict(row)
+    result["transactions"] = json.loads(result["transactions"] or "[]")
+    return result
+
+
+def mark_statement_transaction_added(upload_id, txn_id):
+    """Flip the 'added' flag on a single transaction inside the stored JSON blob."""
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT transactions FROM statement_uploads WHERE id=?", (upload_id,)
+    ).fetchone()
+    if not row:
+        conn.close()
+        return
+    txns = json.loads(row["transactions"] or "[]")
+    for txn in txns:
+        if txn.get("id") == txn_id:
+            txn["added"] = True
+            break
+    conn.execute(
+        "UPDATE statement_uploads SET transactions=? WHERE id=?",
+        (json.dumps(txns), upload_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# WhatsApp message log  (persistent — survives container restarts)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def log_whatsapp_message(from_number, message_type, family_id=None):
+    """Persist one WhatsApp message arrival to the log table."""
+    conn = get_connection()
+    conn.execute(
+        """INSERT INTO whatsapp_message_log (logged_at, family_id, from_number, message_type)
+           VALUES (?, ?, ?, ?)""",
+        (datetime.now().isoformat(), family_id, from_number, message_type),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_whatsapp_message_count_today(family_id=None):
+    """Return the number of WhatsApp messages logged today (SGT date)."""
+    today = datetime.now().strftime("%Y-%m-%d")
+    conn = get_connection()
+    if family_id:
+        count = conn.execute(
+            "SELECT COUNT(*) FROM whatsapp_message_log WHERE logged_at LIKE ? AND family_id=?",
+            (f"{today}%", family_id),
+        ).fetchone()[0]
+    else:
+        count = conn.execute(
+            "SELECT COUNT(*) FROM whatsapp_message_log WHERE logged_at LIKE ?",
+            (f"{today}%",),
+        ).fetchone()[0]
+    conn.close()
+    return count
+
+
+def get_expense_count_today(family_id=None):
+    """Return the number of expense entries added today."""
+    today = datetime.now().strftime("%Y-%m-%d")
+    conn = get_connection()
+    if family_id:
+        count = conn.execute(
+            "SELECT COUNT(*) FROM expenses WHERE date=? AND family_id=?",
+            (today, family_id),
+        ).fetchone()[0]
+    else:
+        count = conn.execute(
+            "SELECT COUNT(*) FROM expenses WHERE date=?",
+            (today,),
+        ).fetchone()[0]
+    conn.close()
+    return count
+
+
+def get_whatsapp_message_log(days=30, family_id=None):
+    """Return message log rows for the past N days, newest first."""
+    conn = get_connection()
+    q = """SELECT logged_at, from_number, message_type, family_id
+           FROM whatsapp_message_log
+           WHERE logged_at >= date('now', ?)"""
+    params: list = [f"-{days} days"]
+    if family_id:
+        q += " AND family_id=?"
+        params.append(family_id)
+    q += " ORDER BY logged_at DESC"
+    rows = conn.execute(q, params).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]

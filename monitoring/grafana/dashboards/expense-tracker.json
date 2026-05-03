@@ -1,0 +1,238 @@
+{
+  "title": "Expense Tracker",
+  "uid": "expense-tracker-v1",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "timezone": "browser",
+  "tags": ["expense-tracker"],
+  "panels": [
+
+    { "id": 1, "type": "row", "title": "🟢 App Health", "gridPos": {"x":0,"y":0,"w":24,"h":1}, "collapsed": false },
+
+    {
+      "id": 2, "type": "stat", "title": "Request Rate (5m)",
+      "gridPos": {"x":0,"y":1,"w":4,"h":4},
+      "datasource": "Prometheus",
+      "targets": [{"expr": "sum(rate(flask_http_request_total[5m]))", "legendFormat": "req/s"}],
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background"},
+      "fieldConfig": {"defaults": {"unit": "reqps", "color": {"mode": "thresholds"},
+        "thresholds": {"steps": [{"value": 0, "color": "green"}, {"value": 10, "color": "yellow"}, {"value": 50, "color": "red"}]}}}
+    },
+
+    {
+      "id": 3, "type": "stat", "title": "Error Rate (5m)",
+      "gridPos": {"x":4,"y":1,"w":4,"h":4},
+      "datasource": "Prometheus",
+      "targets": [{"expr": "sum(rate(flask_http_request_total{status=~\"5..\"}[5m])) or vector(0)", "legendFormat": "errors/s"}],
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background"},
+      "fieldConfig": {"defaults": {"unit": "reqps", "color": {"mode": "thresholds"},
+        "thresholds": {"steps": [{"value": 0, "color": "green"}, {"value": 0.01, "color": "orange"}, {"value": 0.1, "color": "red"}]}}}
+    },
+
+    {
+      "id": 4, "type": "stat", "title": "P95 Latency (5m)",
+      "gridPos": {"x":8,"y":1,"w":4,"h":4},
+      "datasource": "Prometheus",
+      "targets": [{"expr": "histogram_quantile(0.95, sum(rate(flask_http_request_duration_seconds_bucket[5m])) by (le))", "legendFormat": "p95"}],
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background"},
+      "fieldConfig": {"defaults": {"unit": "s", "color": {"mode": "thresholds"},
+        "thresholds": {"steps": [{"value": 0, "color": "green"}, {"value": 0.5, "color": "yellow"}, {"value": 2, "color": "red"}]}}}
+    },
+
+    {
+      "id": 5, "type": "stat", "title": "Expenses Added Today",
+      "gridPos": {"x":12,"y":1,"w":4,"h":4},
+      "datasource": "Prometheus",
+      "targets": [{"expr": "expense_tracker_expenses_today", "legendFormat": "today"}],
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background"},
+      "fieldConfig": {"defaults": {"unit": "short", "color": {"mode": "fixed", "fixedColor": "purple"}}}
+    },
+
+    {
+      "id": 6, "type": "stat", "title": "WhatsApp Messages Today",
+      "gridPos": {"x":16,"y":1,"w":4,"h":4},
+      "datasource": "Prometheus",
+      "targets": [{"expr": "expense_tracker_whatsapp_messages_today", "legendFormat": "messages"}],
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background"},
+      "fieldConfig": {"defaults": {"unit": "short", "color": {"mode": "fixed", "fixedColor": "green"}}}
+    },
+
+    {
+      "id": 7, "type": "stat", "title": "AI Scans Today",
+      "gridPos": {"x":20,"y":1,"w":4,"h":4},
+      "datasource": "Prometheus",
+      "targets": [{"expr": "sum(increase(expense_tracker_ai_scan_total[24h])) or vector(0)", "legendFormat": "scans"}],
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background"},
+      "fieldConfig": {"defaults": {"unit": "short", "color": {"mode": "fixed", "fixedColor": "blue"}}}
+    },
+
+    { "id": 10, "type": "row", "title": "📡 HTTP Performance", "gridPos": {"x":0,"y":5,"w":24,"h":1}, "collapsed": false },
+
+    {
+      "id": 11, "type": "timeseries", "title": "Request Rate by Endpoint",
+      "gridPos": {"x":0,"y":6,"w":12,"h":8},
+      "datasource": "Prometheus",
+      "targets": [{"expr": "sum(rate(flask_http_request_total[5m])) by (path)", "legendFormat": "{{path}}"}],
+      "fieldConfig": {"defaults": {"unit": "reqps"}},
+      "options": {"tooltip": {"mode": "multi"}}
+    },
+
+    {
+      "id": 12, "type": "timeseries", "title": "P95 Response Time by Endpoint",
+      "gridPos": {"x":12,"y":6,"w":12,"h":8},
+      "datasource": "Prometheus",
+      "targets": [{"expr": "histogram_quantile(0.95, sum(rate(flask_http_request_duration_seconds_bucket[5m])) by (le, path))", "legendFormat": "p95 {{path}}"}],
+      "fieldConfig": {"defaults": {"unit": "s"}},
+      "options": {"tooltip": {"mode": "multi"}}
+    },
+
+    {
+      "id": 13, "type": "timeseries", "title": "HTTP Errors Over Time",
+      "gridPos": {"x":0,"y":14,"w":12,"h":6},
+      "datasource": "Prometheus",
+      "targets": [
+        {"expr": "sum(rate(flask_http_request_total{status=~\"5..\"}[5m])) by (path)", "legendFormat": "5xx {{path}}"},
+        {"expr": "sum(rate(flask_http_request_total{status=~\"4..\"}[5m])) by (path)", "legendFormat": "4xx {{path}}"}
+      ],
+      "fieldConfig": {"defaults": {"unit": "reqps"}},
+      "options": {"tooltip": {"mode": "multi"}}
+    },
+
+    {
+      "id": 14, "type": "table", "title": "Slowest Endpoints (P95, last 1h)",
+      "gridPos": {"x":12,"y":14,"w":12,"h":6},
+      "datasource": "Prometheus",
+      "targets": [{
+        "expr": "sort_desc(histogram_quantile(0.95, sum(rate(flask_http_request_duration_seconds_bucket[1h])) by (le, path)))",
+        "legendFormat": "{{path}}",
+        "instant": true
+      }],
+      "fieldConfig": {"defaults": {"unit": "s"}},
+      "options": {"sortBy": [{"displayName": "Value", "desc": true}]}
+    },
+
+    { "id": 20, "type": "row", "title": "💸 Transaction Flow", "gridPos": {"x":0,"y":20,"w":24,"h":1}, "collapsed": false },
+
+    {
+      "id": 21, "type": "timeseries", "title": "Expenses Added Rate (by method)",
+      "gridPos": {"x":0,"y":21,"w":12,"h":8},
+      "datasource": "Prometheus",
+      "targets": [{"expr": "sum(rate(expense_tracker_expense_added_total[5m])) by (method)", "legendFormat": "{{method}}"}],
+      "fieldConfig": {"defaults": {"unit": "ops"}},
+      "options": {"tooltip": {"mode": "multi"}}
+    },
+
+    {
+      "id": 22, "type": "piechart", "title": "Expenses by Category (last 24h)",
+      "gridPos": {"x":12,"y":21,"w":12,"h":8},
+      "datasource": "Prometheus",
+      "targets": [{"expr": "sum(increase(expense_tracker_expense_added_total[24h])) by (category)", "legendFormat": "{{category}}"}],
+      "options": {"pieType": "pie", "tooltip": {"mode": "single"}},
+      "fieldConfig": {"defaults": {"unit": "short"}}
+    },
+
+    {
+      "id": 23, "type": "timeseries", "title": "Total Expense Amount (S$, by category)",
+      "gridPos": {"x":0,"y":29,"w":12,"h":8},
+      "datasource": "Prometheus",
+      "targets": [{"expr": "sum(increase(expense_tracker_expense_amount_dollars_total[1h])) by (category)", "legendFormat": "{{category}}"}],
+      "fieldConfig": {"defaults": {"unit": "currencyUSD"}},
+      "options": {"tooltip": {"mode": "multi"}}
+    },
+
+    {
+      "id": 24, "type": "stat", "title": "Duplicate Detections (24h)",
+      "gridPos": {"x":12,"y":29,"w":6,"h":4},
+      "datasource": "Prometheus",
+      "targets": [{"expr": "sum(increase(expense_tracker_duplicate_detected_total[24h])) or vector(0)", "legendFormat": "duplicates"}],
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background"},
+      "fieldConfig": {"defaults": {"unit": "short", "color": {"mode": "thresholds",
+        "thresholds": {"steps": [{"value": 0, "color": "green"}, {"value": 5, "color": "orange"}]}}}}
+    },
+
+    {
+      "id": 25, "type": "stat", "title": "Statement Imports (24h)",
+      "gridPos": {"x":18,"y":29,"w":6,"h":4},
+      "datasource": "Prometheus",
+      "targets": [{"expr": "sum(increase(expense_tracker_statement_import_total{status=\"success\"}[24h])) or vector(0)", "legendFormat": "imports"}],
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background"},
+      "fieldConfig": {"defaults": {"unit": "short", "color": {"mode": "fixed", "fixedColor": "blue"}}}
+    },
+
+    { "id": 30, "type": "row", "title": "📱 WhatsApp Bot", "gridPos": {"x":0,"y":37,"w":24,"h":1}, "collapsed": false },
+
+    {
+      "id": 31, "type": "timeseries", "title": "WhatsApp Message Rate (by type)",
+      "gridPos": {"x":0,"y":38,"w":12,"h":8},
+      "datasource": "Prometheus",
+      "targets": [{"expr": "sum(rate(expense_tracker_whatsapp_message_total[5m])) by (message_type)", "legendFormat": "{{message_type}}"}],
+      "fieldConfig": {"defaults": {"unit": "ops"}},
+      "options": {"tooltip": {"mode": "multi"}}
+    },
+
+    {
+      "id": 32, "type": "timeseries", "title": "WhatsApp Reply Time (P95)",
+      "gridPos": {"x":12,"y":38,"w":12,"h":8},
+      "datasource": "Prometheus",
+      "targets": [{"expr": "histogram_quantile(0.95, sum(rate(expense_tracker_whatsapp_reply_duration_seconds_bucket[5m])) by (le))", "legendFormat": "p95 reply time"}],
+      "fieldConfig": {"defaults": {"unit": "s"}},
+      "options": {"tooltip": {"mode": "multi"}}
+    },
+
+    { "id": 40, "type": "row", "title": "🤖 AI Model Performance", "gridPos": {"x":0,"y":46,"w":24,"h":1}, "collapsed": false },
+
+    {
+      "id": 41, "type": "timeseries", "title": "AI Scan Duration P95 (by engine)",
+      "gridPos": {"x":0,"y":47,"w":12,"h":8},
+      "datasource": "Prometheus",
+      "targets": [{"expr": "histogram_quantile(0.95, sum(rate(expense_tracker_ai_scan_duration_seconds_bucket[10m])) by (le, engine))", "legendFormat": "p95 {{engine}}"}],
+      "fieldConfig": {"defaults": {"unit": "s"}},
+      "options": {"tooltip": {"mode": "multi"}}
+    },
+
+    {
+      "id": 42, "type": "timeseries", "title": "AI Scan Success vs Failure",
+      "gridPos": {"x":12,"y":47,"w":8,"h":8},
+      "datasource": "Prometheus",
+      "targets": [
+        {"expr": "sum(rate(expense_tracker_ai_scan_total{status=\"success\"}[5m])) by (engine)", "legendFormat": "✅ {{engine}}"},
+        {"expr": "sum(rate(expense_tracker_ai_scan_total{status=\"failed\"}[5m])) by (engine)",  "legendFormat": "❌ {{engine}}"}
+      ],
+      "fieldConfig": {"defaults": {"unit": "ops"}},
+      "options": {"tooltip": {"mode": "multi"}}
+    },
+
+    {
+      "id": 43, "type": "gauge", "title": "AI Success Rate (1h)",
+      "gridPos": {"x":20,"y":47,"w":4,"h":8},
+      "datasource": "Prometheus",
+      "targets": [{"expr": "sum(rate(expense_tracker_ai_scan_total{status=\"success\"}[1h])) / (sum(rate(expense_tracker_ai_scan_total[1h])) > 0) or vector(1)", "legendFormat": "success rate"}],
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "minVizValue": 0, "maxVizValue": 1},
+      "fieldConfig": {"defaults": {"unit": "percentunit", "color": {"mode": "thresholds"},
+        "thresholds": {"steps": [{"value": 0, "color": "red"}, {"value": 0.8, "color": "yellow"}, {"value": 0.95, "color": "green"}]}}}
+    },
+
+    { "id": 50, "type": "row", "title": "📋 Application Logs", "gridPos": {"x":0,"y":55,"w":24,"h":1}, "collapsed": false },
+
+    {
+      "id": 51, "type": "logs", "title": "expense_tracker container logs",
+      "gridPos": {"x":0,"y":56,"w":24,"h":10},
+      "datasource": "Loki",
+      "targets": [{"expr": "{container=\"/expense_tracker\"}", "legendFormat": ""}],
+      "options": {"showTime": true, "showLabels": true, "wrapLogMessage": true, "sortOrder": "Descending",
+        "dedupStrategy": "none", "enableLogDetails": true}
+    },
+
+    {
+      "id": 52, "type": "logs", "title": "Error logs only",
+      "gridPos": {"x":0,"y":66,"w":24,"h":8},
+      "datasource": "Loki",
+      "targets": [{"expr": "{container=\"/expense_tracker\"} |~ \"(?i)(error|exception|traceback|critical)\"", "legendFormat": ""}],
+      "options": {"showTime": true, "showLabels": false, "wrapLogMessage": true, "sortOrder": "Descending",
+        "dedupStrategy": "none", "enableLogDetails": true}
+    }
+
+  ]
+}

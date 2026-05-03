@@ -1,0 +1,88 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Expense Tracker — Monitoring Stack
+#
+# Start:  docker compose -f monitoring/docker-compose.monitoring.yml up -d
+# Stop:   docker compose -f monitoring/docker-compose.monitoring.yml down
+# Logs:   docker compose -f monitoring/docker-compose.monitoring.yml logs -f
+#
+# Grafana:    http://localhost:3000   (admin / set GRAFANA_ADMIN_PASSWORD in ../.env)
+# Prometheus: http://localhost:9090
+#
+# Password config: set GRAFANA_ADMIN_PASSWORD in the root .env file.
+# If not set, falls back to the default below — change it before exposing Grafana
+# to any network other than localhost.
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── Prometheus ── scrapes /metrics from the Flask app ──────────────────────
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    container_name: expense_prometheus
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=30d"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.enable-lifecycle"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # reach Flask app on host/Docker Mac
+
+  # ── Loki ── log aggregation backend ────────────────────────────────────────
+  loki:
+    image: grafana/loki:2.9.5
+    container_name: expense_loki
+    restart: unless-stopped
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - ./loki/loki-config.yml:/etc/loki/local-config.yaml:ro
+      - loki_data:/loki
+    ports:
+      - "3100:3100"
+
+  # ── Promtail ── ships Docker container logs → Loki ──────────────────────────
+  promtail:
+    image: grafana/promtail:2.9.5
+    container_name: expense_promtail
+    restart: unless-stopped
+    command: -config.file=/etc/promtail/config.yml
+    volumes:
+      - ./promtail/promtail-config.yml:/etc/promtail/config.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - loki
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # ── Grafana ── dashboards + alerting ───────────────────────────────────────
+  grafana:
+    image: grafana/grafana:10.4.2
+    container_name: expense_grafana
+    restart: unless-stopped
+    env_file:
+      - ../.env                          # reads GRAFANA_ADMIN_PASSWORD from root .env
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-changeme-set-in-env}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/var/lib/grafana/dashboards/expense-tracker.json
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+      - loki
+
+volumes:
+  prometheus_data:
+  loki_data:
+  grafana_data:

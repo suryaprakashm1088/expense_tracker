@@ -1,0 +1,303 @@
+{% extends "base.html" %}
+{% block title %}Credit Card Bills – {{ month_name }} {{ selected_year }}{% endblock %}
+
+{% block head %}
+<style>
+  .bank-badge {
+    display: inline-block;
+    padding: .2rem .65rem;
+    border-radius: 20px;
+    font-size: .75rem;
+    font-weight: 700;
+    letter-spacing: .03em;
+    color: #fff;
+  }
+  .member-card { border-radius: 14px; overflow: hidden; }
+  .member-header {
+    padding: .75rem 1.25rem;
+    font-weight: 600;
+    font-size: .9rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: #f1f5f9;
+    border-bottom: 1px solid var(--border);
+  }
+  .bill-row {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: .6rem 1.25rem;
+    font-size: .88rem;
+    border-bottom: 1px solid #f1f5f9;
+  }
+  .bill-row:last-child { border-bottom: none; }
+  .bill-row:hover { background: #f8faff; }
+
+  /* Bank brand colours */
+  .bank-dbs    { background: #e31837; }
+  .bank-posb   { background: #c8002d; }
+  .bank-ocbc   { background: #e45300; }
+  .bank-uob    { background: #0039a6; }
+  .bank-citi   { background: #003b85; }
+  .bank-hsbc   { background: #c50000; }
+  .bank-scb    { background: #00884b; }
+  .bank-maybank{ background: #f5aa00; color:#333 !important; }
+  .bank-amex   { background: #007bc1; }
+  .bank-boc    { background: #c5082b; }
+  .bank-icbc   { background: #c00d00; }
+  .bank-rhb    { background: #005aab; }
+  .bank-anz    { background: #007dba; }
+  .bank-trust  { background: #6d28d9; }
+  .bank-gxs    { background: #00b140; }
+  .bank-other  { background: #64748b; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="topbar">
+  <div>
+    <h5><i class="bi bi-credit-card-2-front-fill me-2" style="color:var(--primary)"></i>Credit Card Bills</h5>
+    <nav aria-label="breadcrumb">
+      <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{{ url_for('index') }}">Dashboard</a></li>
+        <li class="breadcrumb-item active">CC Bills</li>
+      </ol>
+    </nav>
+  </div>
+  <!-- Month selector -->
+  <form method="GET" action="{{ url_for('credit_cards') }}" class="d-flex align-items-center gap-2">
+    <select name="month" class="form-select form-select-sm" style="width:130px" onchange="this.form.submit()">
+      {% for i in range(1, 13) %}
+      <option value="{{ i }}" {% if i == selected_month %}selected{% endif %}>{{ month_names[i] }}</option>
+      {% endfor %}
+    </select>
+    <select name="year" class="form-select form-select-sm" style="width:90px" onchange="this.form.submit()">
+      {% for y in range(now.year - 1, now.year + 2) %}
+      <option value="{{ y }}" {% if y == selected_year %}selected{% endif %}>{{ y }}</option>
+      {% endfor %}
+    </select>
+  </form>
+</div>
+
+<!-- ── Summary stat cards ── -->
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md-3">
+    <div class="stat-card bg-grad-purple">
+      <i class="bi bi-credit-card icon"></i>
+      <div class="label">Total CC Bills</div>
+      <div class="value">S${{ "{:,.0f}".format(total) }}</div>
+      <div class="sub">{{ month_name }} {{ selected_year }}</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-card bg-grad-blue">
+      <i class="bi bi-people icon"></i>
+      <div class="label">Members</div>
+      <div class="value">{{ by_member|length }}</div>
+      <div class="sub">with CC bills</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-card bg-grad-orange">
+      <i class="bi bi-bank icon"></i>
+      <div class="label">Banks</div>
+      <div class="value">{{ cc_summary|map(attribute='bank_name')|unique|list|length }}</div>
+      <div class="sub">this month</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-card bg-grad-green">
+      <i class="bi bi-receipt icon"></i>
+      <div class="label">Entries</div>
+      <div class="value">{{ bills|length }}</div>
+      <div class="sub">total logged</div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-4">
+  <!-- ── Left: bills by member ── -->
+  <div class="col-lg-8">
+
+    {% if by_member %}
+      {% for m_name, m_bills in by_member.items() %}
+      <div class="card member-card mb-3">
+        <div class="member-header">
+          <span><i class="bi bi-person-circle me-2 text-primary"></i>{{ m_name }}</span>
+          <span class="badge" style="background:var(--primary); font-size:.8rem;">
+            S${{ "{:,.2f}".format(member_totals[m_name]) }}
+          </span>
+        </div>
+        {% for bill in m_bills %}
+        <div class="bill-row">
+          <div style="min-width:80px;">
+            <span class="bank-badge bank-{{ bill.bank_name|lower|replace(' ','-') }} bank-other"
+                  id="bank-{{ loop.index }}-{{ m_name|replace(' ','') }}">
+              {{ bill.bank_name }}
+            </span>
+          </div>
+          <div style="flex:1; font-weight:600;">S${{ "{:,.2f}".format(bill.amount) }}</div>
+          <div class="text-muted" style="font-size:.82rem;">{{ bill.date }}</div>
+          {% if bill.note %}
+          <div class="text-muted" style="font-size:.8rem; max-width:150px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"
+               title="{{ bill.note }}">{{ bill.note }}</div>
+          {% endif %}
+          <form method="POST" action="{{ url_for('delete_cc_bill', bill_id=bill.id) }}" style="margin:0;">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-sm btn-link text-danger p-0"
+                    onclick="return confirm('Delete this CC bill?')" title="Delete">
+              <i class="bi bi-trash3"></i>
+            </button>
+          </form>
+        </div>
+        {% endfor %}
+      </div>
+      {% endfor %}
+    {% else %}
+      <div class="card">
+        <div class="card-body text-center py-5">
+          <div style="font-size:3.5rem; opacity:.25;">💳</div>
+          <h6 class="mt-3 text-muted">No CC bills for {{ month_name }} {{ selected_year }}</h6>
+          <p class="text-muted mb-0" style="font-size:.88rem;">
+            Add one using the form, or via WhatsApp:<br>
+            <code>DBS CC BILL 500</code>
+          </p>
+        </div>
+      </div>
+    {% endif %}
+  </div>
+
+  <!-- ── Right: add form + bank summary ── -->
+  <div class="col-lg-4">
+
+    <!-- Add CC Bill form -->
+    <div class="card mb-4">
+      <div class="card-header">
+        <i class="bi bi-plus-circle-fill me-2 text-primary"></i>Add CC Bill
+      </div>
+      <div class="card-body p-3">
+        <form method="POST" action="{{ url_for('credit_cards') }}">
+          <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+
+          <div class="mb-3">
+            <label class="form-label" style="font-size:.82rem; font-weight:600;">Bank</label>
+            <input type="text" name="bank_name" class="form-control form-control-sm"
+                   placeholder="e.g. DBS, OCBC, UOB, Citi..."
+                   list="bankList" required>
+            <datalist id="bankList">
+              {% for bank in sg_banks %}
+              <option value="{{ bank }}">
+              {% endfor %}
+            </datalist>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label" style="font-size:.82rem; font-weight:600;">Amount (S$)</label>
+            <div class="input-group input-group-sm">
+              <span class="input-group-text">S$</span>
+              <input type="number" name="amount" class="form-control"
+                     placeholder="0.00" step="0.01" min="0.01" required>
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label" style="font-size:.82rem; font-weight:600;">Member</label>
+            <input type="text" name="member_name" class="form-control form-control-sm"
+                   placeholder="Who's CC bill is this?"
+                   list="memberList" required>
+            <datalist id="memberList">
+              {% for m in members %}
+              {% if m.is_approved %}
+              <option value="{{ m.nickname or m.name }}">
+              {% endif %}
+              {% endfor %}
+            </datalist>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label" style="font-size:.82rem; font-weight:600;">Date</label>
+            <input type="date" name="date" class="form-control form-control-sm"
+                   value="{{ today }}">
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label" style="font-size:.82rem; font-weight:600;">Note <small class="text-muted">(optional)</small></label>
+            <input type="text" name="note" class="form-control form-control-sm"
+                   placeholder="e.g. April statement">
+          </div>
+
+          <button type="submit" class="btn btn-primary btn-sm w-100">
+            <i class="bi bi-check-lg me-1"></i>Add CC Bill
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Bank summary -->
+    {% if cc_summary %}
+    <div class="card mb-4">
+      <div class="card-header">
+        <i class="bi bi-bank me-2 text-warning"></i>By Bank
+      </div>
+      <div class="card-body p-3">
+        {% set bank_totals = {} %}
+        {% for row in cc_summary %}
+          {% if row.bank_name in bank_totals %}
+            {% set _ = bank_totals.update({row.bank_name: bank_totals[row.bank_name] + row.total}) %}
+          {% else %}
+            {% set _ = bank_totals.update({row.bank_name: row.total}) %}
+          {% endif %}
+        {% endfor %}
+        {% for bank, amt in bank_totals.items() %}
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <span class="bank-badge bank-{{ bank|lower|replace(' ','-') }} bank-other">{{ bank }}</span>
+          <span class="fw-600" style="font-size:.9rem;">S${{ "{:,.2f}".format(amt) }}</span>
+        </div>
+        {% if total > 0 %}
+        <div class="progress mb-2" style="height:6px;">
+          <div class="progress-bar" style="width:{{ (amt/total*100)|round(1) }}%; background:#4f46e5;"></div>
+        </div>
+        {% endif %}
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- WhatsApp tip -->
+    <div class="card">
+      <div class="card-body p-3" style="font-size:.83rem; color:var(--muted);">
+        <p class="mb-2 fw-600" style="color:var(--text);">
+          <i class="bi bi-whatsapp me-1" style="color:#25D366;"></i>Log via WhatsApp
+        </p>
+        <p class="mb-1">Send any of these formats:</p>
+        <code class="d-block mb-1">DBS CC BILL 500</code>
+        <code class="d-block mb-1">OCBC cc 300</code>
+        <code class="d-block mb-1">UOB credit card 1200</code>
+        <code class="d-block mb-1">pay Citi cc 450.50</code>
+        <p class="mt-2 mb-0">Supported: DBS, POSB, OCBC, UOB, Citi, HSBC, SCB, Maybank, AMEX, BOC, ICBC, RHB, ANZ, Trust, GXS</p>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Apply specific bank brand colours to bank badges dynamically
+const BANK_COLORS = {
+  'DBS':    '#e31837', 'POSB':    '#c8002d', 'OCBC':  '#e45300',
+  'UOB':    '#0039a6', 'Citi':    '#003b85', 'HSBC':  '#c50000',
+  'SCB':    '#00884b', 'Maybank': '#f5aa00', 'AMEX':  '#007bc1',
+  'BOC':    '#c5082b', 'ICBC':    '#c00d00', 'RHB':   '#005aab',
+  'ANZ':    '#007dba', 'Trust':   '#6d28d9', 'GXS':   '#00b140',
+};
+document.querySelectorAll('.bank-badge').forEach(el => {
+  const name = el.textContent.trim();
+  if (BANK_COLORS[name]) {
+    el.style.background = BANK_COLORS[name];
+    el.style.color = (name === 'Maybank') ? '#333' : '#fff';
+  }
+});
+</script>
+{% endblock %}

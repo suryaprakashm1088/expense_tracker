@@ -1,0 +1,68 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# LOCAL Docker Desktop setup (Mac)
+# No nginx, no SSL — Cloudflare Tunnel handles routing + HTTPS for free.
+#
+# Usage:
+#   docker compose -f docker-compose.local.yml up -d --build
+#   docker compose -f docker-compose.local.yml down
+#   docker compose -f docker-compose.local.yml logs -f
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── Flask App (Gunicorn) ────────────────────────────────────────────────────
+  app:
+    build: .
+    container_name: expense_tracker
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - DB_PATH=/data/expenses.db
+      # ── Vision (primary): LM Studio — OpenAI-compatible local server
+      # Download: https://lmstudio.ai  |  Load a vision model (e.g. qwen3-vl-4b)
+      # Start the Local Server in LM Studio on port 1234 before running the app.
+      - LM_STUDIO_URL=http://host.docker.internal:1234/v1
+      - LM_STUDIO_VISION_MODEL=qwen3-vl-4b
+      # ── Vision (fallback): Ollama (runs natively on Mac, Metal GPU)
+      # Start with: ollama serve   |   Pull model: ollama pull llava
+      - OLLAMA_URL=http://host.docker.internal:11434
+      - OLLAMA_VISION=llava:7b
+      # ── Text summaries: Docker Model Runner (built into Docker Desktop)
+      # Enable: docker desktop enable model-runner --tcp 12434
+      # Pull:   docker model pull ai/llama3.2
+      - MODEL_RUNNER_URL=http://host.docker.internal:12434/engines/llama.cpp/v1
+      - DMR_TEXT_MODEL=docker.io/ai/llama3.2:latest
+    volumes:
+      - ./data:/data
+    ports:
+      - "5001:5001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ── Cloudflare Tunnel ───────────────────────────────────────────────────────
+  # Token must come from Cloudflare Zero Trust dashboard (NOT cloudflared CLI).
+  # See the "Get the correct token" steps below in CLOUDFLARE_SETUP.md.
+  # The token from the dashboard includes routing rules — CLI token does not.
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: expense_cloudflared
+    restart: unless-stopped
+    # Uses Zero Trust connector token — routes traffic inside Docker network
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      - app
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"

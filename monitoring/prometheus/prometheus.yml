@@ -1,0 +1,21 @@
+global:
+  scrape_interval:     15s   # pull metrics every 15 seconds
+  evaluation_interval: 15s
+
+scrape_configs:
+
+  # ── Flask app /metrics endpoint ──────────────────────────────────────────
+  - job_name: expense_tracker
+    static_configs:
+      - targets:
+          # host.docker.internal reaches the Flask container (port 5001) from the
+          # monitoring containers. Works on Docker Desktop (Mac/Windows).
+          # On Linux Docker: replace with the container IP or use a shared network.
+          - host.docker.internal:5001
+    metrics_path: /metrics
+    scrape_interval: 15s
+
+  # ── Prometheus self-monitoring ────────────────────────────────────────────
+  - job_name: prometheus
+    static_configs:
+      - targets: [localhost:9090]

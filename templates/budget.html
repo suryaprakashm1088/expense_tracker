@@ -1,0 +1,409 @@
+{% extends "base.html" %}
+{% block title %}Budget Planner{% endblock %}
+
+{% block head %}
+<style>
+  .budget-stat {
+    border-radius: 14px;
+    padding: 1.25rem 1.5rem;
+    position: relative;
+    overflow: hidden;
+  }
+  .budget-stat::after {
+    content: '';
+    position: absolute;
+    top: -20px; right: -20px;
+    width: 90px; height: 90px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.08);
+  }
+  .budget-stat .label { font-size:.78rem; font-weight:500; opacity:.85; color:#fff; }
+  .budget-stat .value { font-size:1.6rem; font-weight:700; line-height:1.2; color:#fff; }
+  .budget-stat .sub   { font-size:.78rem; opacity:.75; margin-top:.2rem; color:#fff; }
+  .bg-income   { background: linear-gradient(135deg,#059669,#10b981); }
+  .bg-fixed    { background: linear-gradient(135deg,#d97706,#f59e0b); }
+  .bg-variable { background: linear-gradient(135deg,#2563eb,#3b82f6); }
+  .bg-savings  { background: linear-gradient(135deg,#4f46e5,#7c3aed); }
+  .bg-deficit  { background: linear-gradient(135deg,#dc2626,#ef4444); }
+
+  .section-card .card-header { font-size:.95rem; font-weight:600; }
+  .item-row {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:.65rem .75rem;
+    border-radius:8px;
+    background:#f8fafc;
+    margin-bottom:.4rem;
+    font-size:.88rem;
+  }
+  .item-row:hover { background:#f1f5f9; }
+  .item-row .desc { font-weight:500; }
+  .item-row .amt  { font-weight:600; color:var(--text); white-space:nowrap; }
+  .item-row .cat-tag {
+    font-size:.72rem; background:var(--primary-light); color:var(--primary);
+    padding:.15rem .5rem; border-radius:20px; font-weight:500;
+  }
+  .projection-bar {
+    height:20px; border-radius:10px; background:#e2e8f0; overflow:hidden; margin-top:.5rem;
+  }
+  .projection-bar-fill {
+    height:100%; border-radius:10px; transition:width .5s ease;
+  }
+  .month-nav select { font-size:.85rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="topbar">
+  <div>
+    <h5><i class="bi bi-piggy-bank-fill me-2" style="color:var(--primary)"></i>Budget Planner</h5>
+    <nav aria-label="breadcrumb">
+      <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{{ url_for('index') }}">Dashboard</a></li>
+        <li class="breadcrumb-item active">Budget Planner</li>
+      </ol>
+    </nav>
+  </div>
+  <!-- Month Selector -->
+  <form method="GET" action="{{ url_for('budget') }}" class="d-flex align-items-center gap-2 month-nav">
+    <select name="month" class="form-select form-select-sm" style="width:130px" onchange="this.form.submit()">
+      {% for i in range(1, 13) %}
+      <option value="{{ i }}" {% if i == selected_month %}selected{% endif %}>{{ month_names[i] }}</option>
+      {% endfor %}
+    </select>
+    <select name="year" class="form-select form-select-sm" style="width:90px" onchange="this.form.submit()">
+      {% set cur_year = now.year %}
+      {% for y in range(cur_year - 1, cur_year + 2) %}
+      <option value="{{ y }}" {% if y == selected_year %}selected{% endif %}>{{ y }}</option>
+      {% endfor %}
+    </select>
+  </form>
+</div>
+
+<!-- ── Projection Summary Cards ── -->
+{% set s = budget_summary %}
+{% set net = s.projected_net %}
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md-3">
+    <div class="budget-stat bg-income">
+      <div class="label">💰 Monthly Income</div>
+      <div class="value">S${{ "{:,.0f}".format(s.total_income) }}</div>
+      <div class="sub">Total from all sources</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="budget-stat bg-fixed">
+      <div class="label">🏠 Fixed Expenses</div>
+      <div class="value">S${{ "{:,.0f}".format(s.total_fixed) }}</div>
+      <div class="sub">Recurring monthly</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="budget-stat bg-variable">
+      <div class="label">🛒 Variable ({{ month_name }})</div>
+      <div class="value">S${{ "{:,.0f}".format(s.variable_total) }}</div>
+      <div class="sub">Tracked so far</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="budget-stat {% if net >= 0 %}bg-savings{% else %}bg-deficit{% endif %}">
+      <div class="label">{% if net >= 0 %}✅ Projected Savings{% else %}🚨 Projected Deficit{% endif %}</div>
+      <div class="value">S${{ "{:,.0f}".format(net|abs) }}</div>
+      <div class="sub">Income − Fixed − Variable</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Projection bar ── -->
+{% if s.total_income > 0 %}
+<div class="card mb-4">
+  <div class="card-body px-4 py-3">
+    <div class="d-flex justify-content-between align-items-center mb-1">
+      <span style="font-size:.85rem; font-weight:600;">Budget Breakdown — {{ month_name }} {{ selected_year }}</span>
+      <span style="font-size:.8rem; color:var(--muted);">Total Income: S${{ "{:,.2f}".format(s.total_income) }}</span>
+    </div>
+    {% set fixed_pct  = [((s.total_fixed / s.total_income) * 100)|round(1), 100]|min %}
+    {% set var_pct    = [((s.variable_total / s.total_income) * 100)|round(1), 100 - fixed_pct]|min %}
+    {% set saving_pct = [100 - fixed_pct - var_pct, 0]|max %}
+    <div class="d-flex" style="height:22px; border-radius:10px; overflow:hidden; gap:2px;">
+      {% if fixed_pct > 0 %}
+      <div style="width:{{ fixed_pct }}%; background:#f59e0b; display:flex; align-items:center; justify-content:center;"
+           title="Fixed: S${{ '{:,.2f}'.format(s.total_fixed) }}">
+        {% if fixed_pct > 8 %}<span style="font-size:.65rem; color:#fff; font-weight:600;">Fixed {{ fixed_pct }}%</span>{% endif %}
+      </div>
+      {% endif %}
+      {% if var_pct > 0 %}
+      <div style="width:{{ var_pct }}%; background:#3b82f6; display:flex; align-items:center; justify-content:center;"
+           title="Variable: S${{ '{:,.2f}'.format(s.variable_total) }}">
+        {% if var_pct > 8 %}<span style="font-size:.65rem; color:#fff; font-weight:600;">Variable {{ var_pct }}%</span>{% endif %}
+      </div>
+      {% endif %}
+      {% if saving_pct > 0 %}
+      <div style="width:{{ saving_pct }}%; background:#10b981; display:flex; align-items:center; justify-content:center;"
+           title="Remaining: S${{ '{:,.2f}'.format(net) }}">
+        {% if saving_pct > 8 %}<span style="font-size:.65rem; color:#fff; font-weight:600;">Savings {{ saving_pct }}%</span>{% endif %}
+      </div>
+      {% endif %}
+    </div>
+    <div class="d-flex gap-3 mt-2" style="font-size:.75rem; color:var(--muted);">
+      <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#f59e0b;margin-right:4px;"></span>Fixed</span>
+      <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#3b82f6;margin-right:4px;"></span>Variable</span>
+      <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#10b981;margin-right:4px;"></span>Remaining</span>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<div class="row g-4">
+  <!-- ── Left column: Income + Fixed Expenses ── -->
+  <div class="col-lg-7">
+
+    <!-- Income Section -->
+    <div class="card section-card mb-4">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-cash-stack me-2 text-success"></i>Monthly Income</span>
+        <span class="badge" style="background:var(--success);">
+          S${{ "{:,.2f}".format(s.total_income) }}
+        </span>
+      </div>
+      <div class="card-body p-3">
+        {% if income_entries %}
+          {% for entry in income_entries %}
+          <div class="item-row">
+            <div>
+              <span class="desc">{{ entry.description }}</span>
+            </div>
+            <div class="d-flex align-items-center gap-3">
+              <span class="amt text-success">+S${{ "{:,.2f}".format(entry.amount) }}</span>
+              <form method="POST" action="{{ url_for('delete_income', income_id=entry.id) }}" style="display:inline">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-sm btn-link text-danger p-0" title="Remove"
+                        onclick="return confirm('Remove this income entry?')">
+                  <i class="bi bi-trash3"></i>
+                </button>
+              </form>
+            </div>
+          </div>
+          {% endfor %}
+        {% else %}
+          <p class="text-muted text-center py-3 mb-0" style="font-size:.88rem;">
+            <i class="bi bi-info-circle me-1"></i>No income added yet. Add your salary below.
+          </p>
+        {% endif %}
+
+        <!-- Add Income Form -->
+        <div class="border-top mt-3 pt-3">
+          <p class="mb-2" style="font-size:.82rem; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:.05em;">
+            Add Income Source
+          </p>
+          <form method="POST" action="{{ url_for('budget') }}" class="row g-2">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="action" value="add_income">
+            <div class="col-sm-7">
+              <input type="text" name="description" class="form-control form-control-sm"
+                     placeholder="e.g. Salary, Freelance, Rental income" required>
+            </div>
+            <div class="col-sm-3">
+              <div class="input-group input-group-sm">
+                <span class="input-group-text">S$</span>
+                <input type="number" name="amount" class="form-control" placeholder="0.00"
+                       step="0.01" min="0.01" required>
+              </div>
+            </div>
+            <div class="col-sm-2">
+              <button type="submit" class="btn btn-success btn-sm w-100">
+                <i class="bi bi-plus-lg"></i>
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- Fixed Expenses Section -->
+    <div class="card section-card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-house-lock-fill me-2 text-warning"></i>Fixed Monthly Expenses</span>
+        <span class="badge" style="background:#f59e0b;">
+          S${{ "{:,.2f}".format(s.total_fixed) }}
+        </span>
+      </div>
+      <div class="card-body p-3">
+        {% if fixed_by_cat %}
+          {% for cat, items in fixed_by_cat.items() %}
+          <div class="mb-3">
+            <div style="font-size:.75rem; font-weight:600; text-transform:uppercase; letter-spacing:.05em;
+                        color:var(--muted); margin-bottom:.4rem;">{{ cat }}</div>
+            {% for item in items %}
+            <div class="item-row">
+              <div>
+                <span class="desc">{{ item.description }}</span>
+              </div>
+              <div class="d-flex align-items-center gap-3">
+                <span class="amt" style="color:#d97706;">S${{ "{:,.2f}".format(item.amount) }}</span>
+                <form method="POST" action="{{ url_for('delete_fixed_expense', fe_id=item.id) }}" style="display:inline">
+                  <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                  <button type="submit" class="btn btn-sm btn-link text-danger p-0" title="Remove"
+                          onclick="return confirm('Remove this fixed expense?')">
+                    <i class="bi bi-trash3"></i>
+                  </button>
+                </form>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+          {% endfor %}
+        {% else %}
+          <p class="text-muted text-center py-3 mb-0" style="font-size:.88rem;">
+            <i class="bi bi-info-circle me-1"></i>No fixed expenses yet. Add rent, school fees, etc. below.
+          </p>
+        {% endif %}
+
+        <!-- Add Fixed Expense Form -->
+        <div class="border-top mt-3 pt-3">
+          <p class="mb-2" style="font-size:.82rem; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:.05em;">
+            Add Fixed Expense
+          </p>
+          <form method="POST" action="{{ url_for('budget') }}" class="row g-2">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="action" value="add_fixed">
+            <div class="col-12 col-sm-5">
+              <input type="text" name="description" class="form-control form-control-sm"
+                     placeholder="e.g. Rent, School Fee, Car Loan" required>
+            </div>
+            <div class="col-6 col-sm-3">
+              <div class="input-group input-group-sm">
+                <span class="input-group-text">S$</span>
+                <input type="number" name="amount" class="form-control" placeholder="0.00"
+                       step="0.01" min="0.01" required>
+              </div>
+            </div>
+            <div class="col-6 col-sm-3" id="catInputWrap">
+              <input type="text" name="category" class="form-control form-control-sm"
+                     placeholder="Category (e.g. Housing)"
+                     list="fixedCatList" id="fixedCatInput">
+              <datalist id="fixedCatList">
+                <option value="Housing">
+                <option value="Education">
+                <option value="Insurance">
+                <option value="Transport">
+                <option value="Subscriptions">
+                <option value="Loans">
+                <option value="Healthcare">
+                <option value="Utilities">
+                <option value="Other Fixed">
+                {% for cat in fixed_by_cat.keys() %}
+                <option value="{{ cat }}">
+                {% endfor %}
+              </datalist>
+            </div>
+            <div class="col-12 col-sm-1">
+              <button type="submit" class="btn btn-warning btn-sm w-100">
+                <i class="bi bi-plus-lg"></i>
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── Right column: Summary + Tips ── -->
+  <div class="col-lg-5">
+
+    <!-- Detailed Breakdown -->
+    <div class="card mb-4">
+      <div class="card-header">
+        <i class="bi bi-calculator me-2 text-primary"></i>Monthly Projection
+      </div>
+      <div class="card-body p-3">
+        <table class="table table-sm mb-0">
+          <tbody>
+            <tr>
+              <td class="text-muted">Total Income</td>
+              <td class="text-end fw-600 text-success">+S${{ "{:,.2f}".format(s.total_income) }}</td>
+            </tr>
+            <tr>
+              <td class="text-muted">Fixed Expenses</td>
+              <td class="text-end fw-600" style="color:#d97706;">−S${{ "{:,.2f}".format(s.total_fixed) }}</td>
+            </tr>
+            <tr>
+              <td class="text-muted">Variable ({{ month_name }})</td>
+              <td class="text-end fw-600 text-primary">−S${{ "{:,.2f}".format(s.variable_total) }}</td>
+            </tr>
+            <tr class="border-top">
+              <td class="fw-700">
+                {% if net >= 0 %}✅ Projected Savings{% else %}🚨 Projected Deficit{% endif %}
+              </td>
+              <td class="text-end fw-700 {% if net >= 0 %}text-success{% else %}text-danger{% endif %}" style="font-size:1.1rem;">
+                {% if net >= 0 %}+{% endif %}S${{ "{:,.2f}".format(net) }}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        {% if s.total_income > 0 %}
+        <div class="mt-3 p-3 rounded-3" style="background:{% if net >= 0 %}#d1fae5{% else %}#fee2e2{% endif %};">
+          {% if net >= 0 %}
+            {% set savings_rate = ((net / s.total_income) * 100)|round(1) %}
+            <div style="font-size:.85rem; color:#065f46;">
+              <strong>💡 Savings Rate: {{ savings_rate }}%</strong><br>
+              {% if savings_rate >= 20 %}
+                Great job! You're saving {{ savings_rate }}% of your income this month.
+              {% elif savings_rate >= 10 %}
+                Good — aiming for 20%+ is a solid target.
+              {% else %}
+                Try to grow your savings rate to 20% for long-term security.
+              {% endif %}
+            </div>
+          {% else %}
+            <div style="font-size:.85rem; color:#991b1b;">
+              <strong>⚠️ Spending exceeds income by S${{ "{:,.2f}".format(net|abs) }}.</strong><br>
+              Review your variable expenses or reduce fixed costs.
+            </div>
+          {% endif %}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Fixed expense summary by category -->
+    {% if fixed_by_cat %}
+    <div class="card mb-4">
+      <div class="card-header">
+        <i class="bi bi-pie-chart-fill me-2 text-warning"></i>Fixed by Category
+      </div>
+      <div class="card-body p-3">
+        {% for cat, items in fixed_by_cat.items() %}
+        {% set cat_total = items|sum(attribute='amount') %}
+        <div class="d-flex justify-content-between align-items-center mb-1" style="font-size:.85rem;">
+          <span>{{ cat }}</span>
+          <span class="fw-600">S${{ "{:,.2f}".format(cat_total) }}</span>
+        </div>
+        {% if s.total_income > 0 %}
+        <div class="projection-bar mb-2">
+          <div class="projection-bar-fill"
+               style="width:{{ [(cat_total / s.total_income * 100)|round(1), 100]|min }}%;
+                      background:#f59e0b;"></div>
+        </div>
+        {% endif %}
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="card">
+      <div class="card-header">
+        <i class="bi bi-lightbulb-fill me-2 text-warning"></i>Tips
+      </div>
+      <div class="card-body p-3" style="font-size:.85rem; line-height:1.6; color:var(--muted);">
+        <p class="mb-2">📌 <strong>50/30/20 Rule:</strong> Aim for 50% needs, 30% wants, 20% savings.</p>
+        <p class="mb-2">🏠 <strong>Fixed expenses</strong> are recurring every month — rent, school fees, loans, subscriptions.</p>
+        <p class="mb-2">🛒 <strong>Variable expenses</strong> are tracked daily in the main expense tracker.</p>
+        <p class="mb-0">📊 Variable spending updates live as you add expenses each month.</p>
+      </div>
+    </div>
+
+  </div>
+</div>
+{% endblock %}

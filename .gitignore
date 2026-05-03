@@ -1,14 +1,17 @@
-# ── Environment ───────────────────────────────────────────────────────────────
+# ── Environment (secrets — never commit) ──────────────────────────────────────
 .env
 *.env.local
 .env.*
 !.env.example
 
-# ── Database (never commit real data) ────────────────────────────────────────
+# ── Database (real user data — never commit) ──────────────────────────────────
 *.db
+*.db-journal        # SQLite WAL journal — generated automatically, not code
+*.db-shm            # SQLite shared memory file
+*.db-wal            # SQLite WAL file
 *.db-backup
 *.sqlite
-data/
+data/               # Docker volume mount (contains live DB + backups)
 
 # ── Python ────────────────────────────────────────────────────────────────────
 __pycache__/
@@ -22,6 +25,16 @@ env/
 dist/
 build/
 .eggs/
+
+# ── Legacy / replaced files ───────────────────────────────────────────────────
+ollama_client.py    # Replaced by local_ai.py (LM Studio + Ollama + Claude Vision)
+
+# ── Editor / tool local config (machine-specific, not project code) ───────────
+.claude/
+.idea/
+.vscode/
+*.swp
+*.swo
 
 # ── SSL certificates ──────────────────────────────────────────────────────────
 nginx/ssl/
@@ -41,3 +54,8 @@ logs/
 
 # ── Docker ────────────────────────────────────────────────────────────────────
 .dockerignore
+
+# ── Monitoring runtime data (Docker volumes — not config) ─────────────────────
+monitoring/grafana/data/
+monitoring/prometheus/data/
+monitoring/loki/data/

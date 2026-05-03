@@ -1,6 +1,17 @@
 {% extends "base.html" %}
 {% block title %}WhatsApp Members{% endblock %}
 
+{% block head %}
+<style>
+  .pending-card {
+    border-left: 4px solid #ef4444;
+    background: #fff5f5;
+  }
+  .pending-row { background: #fff8f8; }
+  .family-inline-form select { max-width: 160px; font-size:.8rem; }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="topbar">
   <div>
@@ -17,57 +28,139 @@
   </a>
 </div>
 
-<!-- ── Info Banner ── -->
+{# ── Split members into pending and approved ── #}
+{% set pending_members  = members | selectattr('is_approved', 'equalto', 0) | list %}
+{% set approved_members = members | selectattr('is_approved', 'equalto', 1) | list %}
+
+{# ══════════════════════════════════════════════════════════════════
+   SECTION 1 — PENDING APPROVAL
+   ══════════════════════════════════════════════════════════════════ #}
+{% if pending_members %}
+<div class="card mb-4 pending-card">
+  <div class="card-header d-flex align-items-center gap-2" style="background:#fee2e2;border-bottom:1px solid #fca5a5;">
+    <i class="bi bi-hourglass-split text-danger"></i>
+    <strong class="text-danger">Pending Approval</strong>
+    <span class="badge bg-danger ms-1">{{ pending_members|length }}</span>
+    <small class="text-muted ms-2">These people messaged the bot and are waiting for your approval</small>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table mb-0">
+        <thead style="background:#fff0f0;">
+          <tr>
+            <th>Name</th>
+            <th>WhatsApp Number</th>
+            <th>Requested On</th>
+            <th>Added By</th>
+            <th class="text-center" style="min-width:280px;">Approve &amp; Assign Family</th>
+            <th class="text-center">Reject</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for m in pending_members %}
+          <tr class="pending-row">
+            <td class="fw-500">
+              <i class="bi bi-person-circle me-1 text-danger"></i>
+              {{ m.nickname or m.name }}
+            </td>
+            <td style="font-size:.85rem;font-family:monospace;color:#6b7280;">
+              {{ m.whatsapp_number.replace('whatsapp:','') }}
+            </td>
+            <td style="font-size:.83rem;color:#6b7280;">
+              {{ (m.joined_at or m.added_on or '')[:10] }}
+            </td>
+            <td style="font-size:.83rem;color:#6b7280;">
+              {{ m.added_by or '—' }}
+            </td>
+            <td class="text-center">
+              <form method="POST" action="{{ url_for('approve_member', member_id=m.id) }}"
+                    class="d-flex align-items-center justify-content-center gap-2 flex-wrap">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                <select name="family_id" class="form-select form-select-sm" style="max-width:150px;">
+                  <option value="">— No family —</option>
+                  {% for f in families %}
+                  <option value="{{ f.id }}">{{ f.name }}</option>
+                  {% endfor %}
+                </select>
+                <button type="submit" class="btn btn-sm btn-success px-3">
+                  <i class="bi bi-check-lg me-1"></i>Approve
+                </button>
+              </form>
+            </td>
+            <td class="text-center">
+              <form method="POST" action="{{ url_for('delete_member', member_id=m.id) }}"
+                    onsubmit="return confirm('Reject and remove {{ m.nickname or m.name }}?')">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-sm btn-outline-danger" title="Reject &amp; remove">
+                  <i class="bi bi-x-lg"></i>
+                </button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{# ══════════════════════════════════════════════════════════════════
+   SECTION 2 — HOW ACCESS WORKS
+   ══════════════════════════════════════════════════════════════════ #}
 <div class="card mb-4" style="border-left:4px solid #25D366; background:#f0fdf4;">
   <div class="card-body py-3">
-    <h6 class="fw-700 mb-2"><i class="bi bi-info-circle-fill text-success me-2"></i>How Invite-Only Access Works</h6>
+    <h6 class="fw-700 mb-2"><i class="bi bi-info-circle-fill text-success me-2"></i>Two ways to onboard members</h6>
     <div class="row g-3">
-      <div class="col-md-4">
-        <div class="d-flex gap-2">
-          <span class="fw-700 text-success">1.</span>
-          <span>Admin generates an invite code at <a href="{{ url_for('onboarding') }}">Onboarding</a> with a nickname + family</span>
+      <div class="col-md-6">
+        <div class="p-3 bg-white rounded border">
+          <div class="fw-600 mb-1">🔗 Via Invite Code</div>
+          <ol class="small text-muted mb-0 ps-3">
+            <li>Generate a code at <a href="{{ url_for('onboarding') }}">Onboarding</a></li>
+            <li>Share the code with the person</li>
+            <li>They send <code>JOIN CODE</code> to the bot — auto-approved instantly</li>
+          </ol>
         </div>
       </div>
-      <div class="col-md-4">
-        <div class="d-flex gap-2">
-          <span class="fw-700 text-success">2.</span>
-          <span>Admin shares the code with the new member (e.g. via personal WhatsApp)</span>
-        </div>
-      </div>
-      <div class="col-md-4">
-        <div class="d-flex gap-2">
-          <span class="fw-700 text-success">3.</span>
-          <span>New member sends <code>JOIN CODE</code> to the bot — they're auto-approved and added</span>
+      <div class="col-md-6">
+        <div class="p-3 bg-white rounded border">
+          <div class="fw-600 mb-1">📲 Self-Registration</div>
+          <ol class="small text-muted mb-0 ps-3">
+            <li>Person messages the bot (any text)</li>
+            <li>They're added here as <span class="text-danger fw-500">Pending</span></li>
+            <li>You approve them above and assign a family</li>
+          </ol>
         </div>
       </div>
     </div>
   </div>
 </div>
 
-<!-- ── Members Table ── -->
+{# ══════════════════════════════════════════════════════════════════
+   SECTION 3 — APPROVED MEMBERS TABLE
+   ══════════════════════════════════════════════════════════════════ #}
 <div class="card">
   <div class="card-header d-flex justify-content-between align-items-center">
-    <span><i class="bi bi-people-fill me-2 text-primary"></i>Registered Members</span>
-    <span class="badge bg-primary">{{ members|length }} total</span>
+    <span><i class="bi bi-people-fill me-2 text-primary"></i>Active Members</span>
+    <span class="badge bg-primary">{{ approved_members|length }} active</span>
   </div>
   <div class="card-body p-0">
-    {% if members %}
+    {% if approved_members %}
     <div class="table-responsive">
       <table class="table mb-0">
         <thead>
           <tr>
-            <th>Name / Nickname</th>
+            <th>Name</th>
             <th>WhatsApp Number</th>
             <th>Family</th>
             <th>Joined</th>
-            <th>Added By</th>
             <th class="text-center">Role</th>
-            <th class="text-center">Status</th>
+            <th class="text-center">Web Login</th>
             <th class="text-center">Actions</th>
           </tr>
         </thead>
         <tbody>
-          {% for m in members %}
+          {% for m in approved_members %}
           <tr>
             <td class="fw-500">
               <i class="bi bi-person-circle me-1 text-muted"></i>
@@ -76,56 +169,83 @@
                 <br><small class="text-muted">{{ m.name }}</small>
               {% endif %}
             </td>
-            <td class="text-muted" style="font-size:.85rem; font-family:monospace">
+            <td style="font-size:.85rem;font-family:monospace;color:#6b7280;">
               {{ m.whatsapp_number.replace('whatsapp:','') }}
             </td>
+
+            {# ── Family cell with inline change form ── #}
             <td>
-              {% if m.family_name %}
-                <span class="badge bg-light text-dark border">{{ m.family_name }}</span>
-              {% else %}
-                <span class="text-muted">—</span>
-              {% endif %}
+              <form method="POST" action="{{ url_for('assign_family', member_id=m.id) }}"
+                    class="d-flex align-items-center gap-1 family-inline-form">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                <select name="family_id" class="form-select form-select-sm"
+                        onchange="this.form.submit()" title="Change family">
+                  <option value="">— None —</option>
+                  {% for f in families %}
+                  <option value="{{ f.id }}" {{ 'selected' if m.family_id == f.id }}>{{ f.name }}</option>
+                  {% endfor %}
+                </select>
+              </form>
             </td>
-            <td class="text-muted" style="font-size:.83rem">
+
+            <td style="font-size:.83rem;color:#6b7280;">
               {{ (m.joined_at or m.added_on or '')[:10] }}
             </td>
-            <td class="text-muted" style="font-size:.83rem">
-              {{ m.added_by or 'Web' }}
-            </td>
+
             <td class="text-center">
-              {% if m.is_admin %}
-                <span class="badge bg-warning text-dark">👑 Admin</span>
-              {% else %}
-                <span class="badge bg-light text-dark border">Member</span>
-              {% endif %}
-            </td>
-            <td class="text-center">
-              {% if m.is_approved %}
-                <span class="badge bg-success">✅ Active</span>
-              {% else %}
-                <span class="badge bg-danger">🚫 Inactive</span>
-              {% endif %}
-            </td>
-            <td class="text-center" style="white-space:nowrap">
-              <form method="POST" action="{{ url_for('toggle_member', member_id=m.id) }}" style="display:inline">
-                <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
-                <button type="submit"
-                  class="btn btn-sm {{ 'btn-outline-warning' if m.is_approved else 'btn-outline-success' }} py-0 px-2 me-1"
-                  title="{{ 'Deactivate' if m.is_approved else 'Activate' }}">
-                  <i class="bi {{ 'bi-slash-circle' if m.is_approved else 'bi-check-circle' }}"></i>
-                </button>
-              </form>
               <form method="POST" action="{{ url_for('toggle_admin', member_id=m.id) }}" style="display:inline">
                 <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
                 <button type="submit"
-                  class="btn btn-sm {{ 'btn-warning' if m.is_admin else 'btn-outline-secondary' }} py-0 px-2 me-1"
+                  class="btn btn-sm {{ 'btn-warning' if m.is_admin else 'btn-outline-secondary' }} py-0 px-2"
                   title="{{ 'Remove Admin' if m.is_admin else 'Make Admin' }}">
-                  <i class="bi bi-shield-fill"></i>
+                  {% if m.is_admin %}
+                    <i class="bi bi-shield-fill-check"></i> Admin
+                  {% else %}
+                    <i class="bi bi-shield"></i> Member
+                  {% endif %}
                 </button>
               </form>
+            </td>
+
+            <td class="text-center">
+              {% if m.can_login %}
+                <span class="badge bg-success" title="Web login enabled">🔓 On</span>
+              {% else %}
+                <span class="badge bg-light text-muted border">🔒 Off</span>
+              {% endif %}
+            </td>
+
+            <td class="text-center" style="white-space:nowrap">
+              {# Deactivate #}
+              <form method="POST" action="{{ url_for('toggle_member', member_id=m.id) }}" style="display:inline">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-sm btn-outline-warning py-0 px-2 me-1" title="Deactivate">
+                  <i class="bi bi-slash-circle"></i>
+                </button>
+              </form>
+              {# Set Web Password #}
+              <button type="button"
+                class="btn btn-sm btn-outline-primary py-0 px-2 me-1"
+                title="Set web login password"
+                data-bs-toggle="modal"
+                data-bs-target="#pwdModal{{ m.id }}">
+                <i class="bi bi-key-fill"></i>
+              </button>
+              {# Revoke web login #}
+              {% if m.can_login %}
+              <form method="POST" action="{{ url_for('revoke_member_login_route', member_id=m.id) }}"
+                    style="display:inline"
+                    onsubmit="return confirm('Remove web login for {{ m.nickname or m.name }}?')">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-sm btn-outline-secondary py-0 px-2 me-1" title="Revoke web login">
+                  <i class="bi bi-person-x-fill"></i>
+                </button>
+              </form>
+              {% endif %}
+              {# Delete #}
               <form method="POST" action="{{ url_for('delete_member', member_id=m.id) }}"
                     style="display:inline"
-                    onsubmit="return confirm('Remove member?')">
+                    onsubmit="return confirm('Remove {{ m.nickname or m.name }}?')">
                 <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
                 <button type="submit" class="btn btn-sm btn-outline-danger py-0 px-2" title="Remove">
                   <i class="bi bi-trash-fill"></i>
@@ -140,15 +260,50 @@
     {% else %}
     <div class="text-center text-muted py-5">
       <i class="bi bi-people" style="font-size:3rem;opacity:.3"></i>
-      <p class="mt-2">No members yet.<br>
-        <a href="{{ url_for('onboarding') }}">Generate an invite code →</a> to add your first member.
+      <p class="mt-2">No active members yet.<br>
+        <a href="{{ url_for('onboarding') }}">Generate an invite code →</a> or wait for self-registrations above.
       </p>
     </div>
     {% endif %}
   </div>
 </div>
 
-<!-- ── Bot commands reference ── -->
+{# ── Set Web Password Modals ── #}
+{% for m in approved_members %}
+<div class="modal fade" id="pwdModal{{ m.id }}" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h6 class="modal-title"><i class="bi bi-key-fill me-2 text-primary"></i>Set Web Password</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="POST" action="{{ url_for('set_member_password_route', member_id=m.id) }}">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+        <div class="modal-body">
+          <p class="text-muted small mb-3">
+            Setting a password for <strong>{{ m.nickname or m.name }}</strong>.<br>
+            They will log in with their WhatsApp number:<br>
+            <code>{{ m.whatsapp_number.replace('whatsapp:','') }}</code>
+          </p>
+          <div class="mb-2">
+            <label class="form-label small fw-500">Password <span class="text-muted">(min 6 chars)</span></label>
+            <input type="password" name="member_password" class="form-control form-control-sm"
+                   placeholder="Enter password" minlength="6" required>
+          </div>
+        </div>
+        <div class="modal-footer py-2">
+          <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-sm btn-primary">
+            <i class="bi bi-check-lg me-1"></i>Set Password
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endfor %}
+
+{# ── Bot commands reference ── #}
 <div class="card mt-4">
   <div class="card-header">
     <i class="bi bi-chat-dots-fill me-2" style="color:#25D366"></i>Bot Commands Reference
@@ -166,7 +321,7 @@
         </div>
       </div>
       <div class="col-md-6">
-        <h6 class="fw-700 text-primary mb-2">📊 Reports & Commands</h6>
+        <h6 class="fw-700 text-primary mb-2">📊 Reports &amp; Commands</h6>
         <div class="bg-light rounded p-3" style="font-family:monospace; font-size:.85rem; line-height:2">
           today &nbsp; → today's family spending<br>
           monthly → this month summary<br>

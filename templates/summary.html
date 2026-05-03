@@ -12,7 +12,64 @@
       </ol>
     </nav>
   </div>
+  <button id="aiSummaryBtn" class="btn btn-sm px-3"
+          style="background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;border:none;border-radius:10px;"
+          onclick="loadAiSummary()">
+    <i class="bi bi-stars me-1"></i> AI Insight
+  </button>
 </div>
+
+<!-- ── AI Summary Panel ── -->
+<div id="aiSummaryPanel" class="card mb-4" style="display:none;border-left:4px solid #7c3aed;background:#faf5ff;">
+  <div class="card-body">
+    <div class="d-flex align-items-center gap-2 mb-2">
+      <span style="font-size:1.2rem;">🤖</span>
+      <strong style="color:#7c3aed;">AI Spending Insight — {{ month_name }} {{ selected_year }}</strong>
+      <span id="aiSpinner" class="spinner-border spinner-border-sm text-primary ms-2" style="display:none;"></span>
+    </div>
+    <p id="aiSummaryText" class="mb-0" style="color:#374151;line-height:1.7;white-space:pre-wrap;"></p>
+    <p id="aiSummaryError" class="mb-0 text-danger small" style="display:none;"></p>
+  </div>
+</div>
+
+<script>
+function loadAiSummary() {
+  const btn    = document.getElementById('aiSummaryBtn');
+  const panel  = document.getElementById('aiSummaryPanel');
+  const text   = document.getElementById('aiSummaryText');
+  const err    = document.getElementById('aiSummaryError');
+  const spin   = document.getElementById('aiSpinner');
+
+  panel.style.display = 'block';
+  text.textContent    = '';
+  err.style.display   = 'none';
+  spin.style.display  = 'inline-block';
+  btn.disabled        = true;
+  btn.innerHTML       = '<span class="spinner-border spinner-border-sm me-1"></span> Thinking…';
+
+  fetch(`{{ url_for('api_ai_summary') }}?month={{ selected_month }}&year={{ selected_year }}`)
+    .then(r => r.json())
+    .then(data => {
+      spin.style.display = 'none';
+      btn.disabled       = false;
+      btn.innerHTML      = '<i class="bi bi-stars me-1"></i> AI Insight';
+      if (data.ok) {
+        text.textContent = data.summary;
+      } else {
+        err.style.display   = 'block';
+        err.textContent     = '⚠️ ' + data.error;
+        text.textContent    = '';
+      }
+    })
+    .catch(() => {
+      spin.style.display = 'none';
+      btn.disabled       = false;
+      btn.innerHTML      = '<i class="bi bi-stars me-1"></i> AI Insight';
+      err.style.display  = 'block';
+      err.textContent    = '⚠️ Could not reach the AI service. Is Ollama running?';
+    });
+}
+</script>
 
 <!-- ── Month Selector ── -->
 <div class="card mb-4">
@@ -88,24 +145,30 @@
   </div>
 </div>
 
-<!-- ── Category breakdown table ── -->
+<!-- ── Category breakdown table with drill-down ── -->
 <div class="card mb-4">
-  <div class="card-header">
-    <i class="bi bi-table me-2 text-primary"></i>Category-wise Breakdown
+  <div class="card-header d-flex align-items-center justify-content-between">
+    <span><i class="bi bi-table me-2 text-primary"></i>Category-wise Breakdown</span>
+    <small class="text-muted" style="font-size:.76rem;">
+      <i class="bi bi-chevron-down me-1"></i>Click any row to see top spends
+    </small>
   </div>
   <div class="card-body p-0">
-    <table class="table mb-0">
+    <table class="table mb-0" id="catTable">
       <thead>
         <tr>
           <th>Category</th>
           <th>Amount</th>
-          <th style="width:35%">Share</th>
-          <th class="text-end">%</th>
+          <th style="width:30%">Share</th>
+          <th class="text-end" style="width:50px;">%</th>
+          <th style="width:30px;"></th>
         </tr>
       </thead>
       <tbody>
         {% for row in category_data %}
-        <tr>
+        {# Main category row — clickable #}
+        <tr class="cat-row" data-cat="{{ row.category }}" style="cursor:pointer;"
+            title="Click to see top spends in {{ row.category }}">
           <td>
             <span class="cat-badge cbadge" data-cat="{{ row.category }}">
               <span class="cicon"></span>{{ row.category }}
@@ -123,6 +186,94 @@
             </div>
           </td>
           <td class="text-end text-muted">{{ row.pct }}%</td>
+          <td class="text-center">
+            <i class="bi bi-chevron-down drill-icon" style="font-size:.75rem; color:var(--muted); transition:transform .2s;"></i>
+          </td>
+        </tr>
+
+        {# Drill-down row (hidden by default) #}
+        <tr class="drill-row" id="drill-{{ loop.index }}" style="display:none; background:#fafbff;">
+          <td colspan="5" class="p-0">
+            <div class="drill-content px-4 py-3">
+              <!-- Tabs: Month / Week -->
+              <ul class="nav nav-pills nav-sm mb-3" style="gap:.4rem;">
+                <li class="nav-item">
+                  <button class="nav-link active tab-btn py-1 px-3"
+                          style="font-size:.78rem;"
+                          data-target="month-{{ loop.index }}"
+                          onclick="switchTab(this, 'month-{{ loop.index }}')">
+                    🗓️ This Month
+                  </button>
+                </li>
+                <li class="nav-item">
+                  <button class="nav-link tab-btn py-1 px-3"
+                          style="font-size:.78rem;"
+                          data-target="week-{{ loop.index }}"
+                          onclick="switchTab(this, 'week-{{ loop.index }}')">
+                    📅 This Week
+                  </button>
+                </li>
+              </ul>
+
+              <!-- Month top -->
+              <div id="month-{{ loop.index }}">
+                {% if row.category in top_by_cat and top_by_cat[row.category] %}
+                  {% for exp in top_by_cat[row.category] %}
+                  <div class="d-flex align-items-center gap-3 py-2"
+                       style="border-bottom:1px solid #f1f5f9; font-size:.85rem;">
+                    <div style="flex:1;">
+                      <span class="fw-500">{{ exp.title }}</span>
+                      {% if exp.shop_name and exp.shop_name != exp.title %}
+                        <span class="text-muted"> · {{ exp.shop_name }}</span>
+                      {% endif %}
+                      {% if exp.added_by and exp.added_by != 'Web' %}
+                        <span class="text-muted"> · {{ exp.added_by }}</span>
+                      {% endif %}
+                    </div>
+                    <div class="text-muted" style="font-size:.8rem;">{{ exp.date }}</div>
+                    <div class="fw-700" style="min-width:70px; text-align:right; color:var(--primary);">
+                      S${{ "{:,.2f}".format(exp.amount) }}
+                    </div>
+                  </div>
+                  {% endfor %}
+                  <div class="mt-2">
+                    <a href="{{ url_for('expenses') }}?category={{ row.category|urlencode }}&month={{ selected_month }}&year={{ selected_year }}"
+                       style="font-size:.78rem; color:var(--primary);">
+                      View all {{ row.category }} expenses →
+                    </a>
+                  </div>
+                {% else %}
+                  <p class="text-muted mb-0" style="font-size:.84rem;">No expenses in this category this month.</p>
+                {% endif %}
+              </div>
+
+              <!-- Week top -->
+              <div id="week-{{ loop.index }}" style="display:none;">
+                {% if row.category in week_top_by_cat and week_top_by_cat[row.category] %}
+                  {% for exp in week_top_by_cat[row.category] %}
+                  <div class="d-flex align-items-center gap-3 py-2"
+                       style="border-bottom:1px solid #f1f5f9; font-size:.85rem;">
+                    <div style="flex:1;">
+                      <span class="fw-500">{{ exp.title }}</span>
+                      {% if exp.shop_name and exp.shop_name != exp.title %}
+                        <span class="text-muted"> · {{ exp.shop_name }}</span>
+                      {% endif %}
+                      {% if exp.added_by and exp.added_by != 'Web' %}
+                        <span class="text-muted"> · {{ exp.added_by }}</span>
+                      {% endif %}
+                    </div>
+                    <div class="text-muted" style="font-size:.8rem;">{{ exp.date }}</div>
+                    <div class="fw-700" style="min-width:70px; text-align:right; color:var(--success);">
+                      S${{ "{:,.2f}".format(exp.amount) }}
+                    </div>
+                  </div>
+                  {% endfor %}
+                {% else %}
+                  <p class="text-muted mb-0" style="font-size:.84rem;">No spends in this category in the last 7 days.</p>
+                {% endif %}
+              </div>
+            </div>
+          </td>
         </tr>
         {% endfor %}
       </tbody>
@@ -132,6 +283,7 @@
           <td class="fw-700 text-primary">S${{ "{:,.2f}".format(grand_total) }}</td>
           <td></td>
           <td class="text-end fw-600">100%</td>
+          <td></td>
         </tr>
       </tfoot>
     </table>
@@ -280,5 +432,40 @@ document.querySelectorAll(".progress-fill[data-cat]").forEach(el => {
   el.style.backgroundColor = getCatColor(el.dataset.cat);
   el.style.width = el.dataset.pct + "%";
 });
+
+// ── Category drill-down accordion ────────────────────────────────────────────
+document.querySelectorAll(".cat-row").forEach((row, idx) => {
+  row.addEventListener("click", () => {
+    const drillId = "drill-" + (idx + 1);
+    const drillRow = document.getElementById(drillId);
+    const icon = row.querySelector(".drill-icon");
+    if (!drillRow) return;
+    const isOpen = drillRow.style.display !== "none";
+    // Close all open drills
+    document.querySelectorAll(".drill-row").forEach(r => r.style.display = "none");
+    document.querySelectorAll(".drill-icon").forEach(i => {
+      i.style.transform = "rotate(0deg)";
+      i.style.color = "var(--muted)";
+    });
+    if (!isOpen) {
+      drillRow.style.display = "table-row";
+      icon.style.transform = "rotate(180deg)";
+      icon.style.color = "var(--primary)";
+    }
+  });
+});
+
+// ── Month/Week tab switcher inside drill-down ────────────────────────────────
+function switchTab(btn, targetId) {
+  const drillContent = btn.closest(".drill-content");
+  // Hide all tab panels
+  drillContent.querySelectorAll("[id^='month-'], [id^='week-']").forEach(p => p.style.display = "none");
+  // Deactivate all tab buttons
+  drillContent.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+  // Show target
+  const target = document.getElementById(targetId);
+  if (target) target.style.display = "block";
+  btn.classList.add("active");
+}
 </script>
 {% endblock %}

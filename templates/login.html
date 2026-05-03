@@ -104,7 +104,7 @@
   <div class="login-header">
     <div class="app-icon">💰</div>
     <h4>Family Expense Tracker</h4>
-    <small>Admin Dashboard Login</small>
+    <small>Sign in to access your dashboard</small>
   </div>
 
   <div class="login-body">
@@ -116,14 +116,20 @@
     </div>
     {% endif %}
 
-    <!-- First-time hint shown only if default creds still active -->
+    {% if otp %}
+    <!-- One-time password hint — only shown until admin changes credentials -->
     <div class="default-hint">
-      <i class="bi bi-info-circle-fill me-1"></i>
-      First time? Use the default credentials:<br>
-      <strong>Username:</strong> admin &nbsp;|&nbsp; <strong>Password:</strong> Admin@123
+      <i class="bi bi-shield-lock-fill me-1"></i>
+      <strong>First-time setup — one-time password:</strong><br>
+      <strong>Username:</strong> admin<br>
+      <strong>Password:</strong>
+      <code style="font-size:.9rem;background:#dcfce7;padding:2px 6px;border-radius:4px;">{{ otp }}</code><br>
+      <span style="font-size:.75rem;color:#15803d;">You will be asked to change this immediately after logging in.</span>
     </div>
+    {% endif %}
 
     <form method="POST" action="{{ url_for('login') }}{% if request.args.get('next') %}?next={{ request.args.get('next') }}{% endif %}">
+      <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
       <div class="mb-3">
         <label class="form-label" for="username">
           <i class="bi bi-person-fill me-1"></i>Username
@@ -133,7 +139,7 @@
           id="username"
           name="username"
           class="form-control"
-          placeholder="Enter username"
+          placeholder="admin  — or your WhatsApp number (+6591234567)"
           autocomplete="username"
           required
           autofocus

@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+{% block title %}Import Statement — Expense Tracker{% endblock %}
+
+{% block content %}
+<div class="topbar">
+  <div>
+    <h5>📄 Import Bank Statement</h5>
+    <nav aria-label="breadcrumb">
+      <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{{ url_for('credit_cards') }}">CC Bills</a></li>
+        <li class="breadcrumb-item active">Import Statement</li>
+      </ol>
+    </nav>
+  </div>
+</div>
+
+<div class="row justify-content-center">
+  <div class="col-lg-6">
+
+    <div class="card">
+      <div class="card-header d-flex align-items-center gap-2">
+        <i class="bi bi-upload text-primary"></i>
+        Upload your statement
+      </div>
+      <div class="card-body p-4">
+
+        <form method="POST" enctype="multipart/form-data" id="uploadForm">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+          <!-- Bank selector -->
+          <div class="mb-4">
+            <label class="form-label fw-semibold">Bank</label>
+            <select name="bank_name" class="form-select" required>
+              <option value="">— Select your bank —</option>
+              {% for bank in sg_banks %}
+                <option value="{{ bank }}">{{ bank }}</option>
+              {% endfor %}
+              <option value="Other">Other</option>
+            </select>
+          </div>
+
+          <!-- File upload -->
+          <div class="mb-4">
+            <label class="form-label fw-semibold">Statement file</label>
+            <div id="dropZone" class="drop-zone" onclick="document.getElementById('fileInput').click()">
+              <div id="dropContent">
+                <i class="bi bi-file-earmark-arrow-up" style="font-size:2.5rem;color:var(--primary);opacity:.6"></i>
+                <p class="mt-2 mb-1 fw-semibold" style="color:var(--text)">Drag & drop or click to browse</p>
+                <p class="mb-0" style="color:var(--muted);font-size:.82rem">Accepts CSV or PDF · Max 10 MB</p>
+              </div>
+              <div id="filePreview" class="d-none">
+                <i class="bi bi-file-earmark-check" style="font-size:2rem;color:var(--success)"></i>
+                <p class="mt-2 mb-0 fw-semibold" id="fileName" style="color:var(--text)">filename.csv</p>
+                <p class="mb-0" id="fileSize" style="color:var(--muted);font-size:.82rem"></p>
+              </div>
+            </div>
+            <input type="file" id="fileInput" name="statement_file"
+                   accept=".csv,.pdf,.txt" class="d-none" required>
+          </div>
+
+          <button type="submit" class="btn btn-primary w-100 py-2" id="submitBtn">
+            <i class="bi bi-cpu me-2"></i>Parse Statement
+          </button>
+        </form>
+
+      </div>
+    </div>
+
+    <!-- How it works -->
+    <div class="card mt-3">
+      <div class="card-header">
+        <i class="bi bi-info-circle me-1"></i> How it works
+      </div>
+      <div class="card-body" style="font-size:.88rem;color:var(--muted)">
+        <ol class="mb-0 ps-3" style="line-height:2">
+          <li>Export a statement from your bank's internet banking as <strong>CSV</strong> (or PDF).</li>
+          <li>Upload it here — the app auto-detects the bank format.</li>
+          <li>Review the parsed transactions, adjust categories if needed.</li>
+          <li>Click <strong>+</strong> next to any row to add it to your expenses.</li>
+        </ol>
+        <hr class="my-3">
+        <p class="mb-1"><strong>Supported banks (CSV)</strong></p>
+        <p class="mb-0">DBS&nbsp;/ POSB &nbsp;·&nbsp; OCBC &nbsp;·&nbsp; UOB &nbsp;·&nbsp; Citi &nbsp;·&nbsp; Standard Chartered &nbsp;·&nbsp; Generic CSV</p>
+        <p class="mt-2 mb-0"><strong>PDF</strong> — parsed via AI (LM Studio / Claude) if text extraction fails.</p>
+      </div>
+    </div>
+
+  </div>
+</div>
+{% endblock %}
+
+{% block head %}
+<style>
+  .drop-zone {
+    border: 2px dashed var(--border);
+    border-radius: 12px;
+    padding: 2.5rem 1rem;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color .2s, background .2s;
+  }
+  .drop-zone:hover,
+  .drop-zone.dragover {
+    border-color: var(--primary);
+    background: var(--primary-light);
+  }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const dropZone   = document.getElementById('dropZone');
+const fileInput  = document.getElementById('fileInput');
+const dropContent= document.getElementById('dropContent');
+const filePreview= document.getElementById('filePreview');
+const fileNameEl = document.getElementById('fileName');
+const fileSizeEl = document.getElementById('fileSize');
+const submitBtn  = document.getElementById('submitBtn');
+
+function showFile(file) {
+  if (!file) return;
+  fileNameEl.textContent = file.name;
+  const kb = (file.size / 1024).toFixed(1);
+  fileSizeEl.textContent = `${kb} KB`;
+  dropContent.classList.add('d-none');
+  filePreview.classList.remove('d-none');
+}
+
+fileInput.addEventListener('change', () => showFile(fileInput.files[0]));
+
+dropZone.addEventListener('dragover', e => {
+  e.preventDefault();
+  dropZone.classList.add('dragover');
+});
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('dragover');
+  const dt = e.dataTransfer;
+  if (dt.files.length) {
+    // Assign to hidden input
+    const dt2 = new DataTransfer();
+    dt2.items.add(dt.files[0]);
+    fileInput.files = dt2.files;
+    showFile(dt.files[0]);
+  }
+});
+
+document.getElementById('uploadForm').addEventListener('submit', () => {
+  submitBtn.disabled = true;
+  submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Parsing…';
+});
+</script>
+{% endblock %}

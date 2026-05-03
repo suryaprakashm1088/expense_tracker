@@ -1,0 +1,376 @@
+{% extends "base.html" %}
+{% block title %}Review Statement — Expense Tracker{% endblock %}
+
+{% block head %}
+<style>
+  .txn-row.added {
+    opacity: .45;
+    background: #f0fdf4 !important;
+  }
+  .txn-row.added .btn-add {
+    display: none;
+  }
+  .txn-row.added .added-badge {
+    display: inline-flex !important;
+  }
+  .added-badge {
+    display: none;
+    align-items: center;
+    gap: .3rem;
+    color: var(--success);
+    font-size: .78rem;
+    font-weight: 600;
+  }
+  .btn-add {
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    border: none;
+    background: var(--primary);
+    color: #fff;
+    font-size: 1.1rem;
+    line-height: 1;
+    display: flex; align-items: center; justify-content: center;
+    transition: background .15s, transform .1s;
+    flex-shrink: 0;
+  }
+  .btn-add:hover  { background: #4338ca; transform: scale(1.1); }
+  .btn-add:active { transform: scale(.95); }
+  .btn-add:disabled { background: #94a3b8; cursor: not-allowed; transform: none; }
+
+  .cat-select {
+    font-size: .8rem;
+    padding: .2rem .5rem;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: #fff;
+    max-width: 180px;
+  }
+  .vendor-chip {
+    font-size: .72rem;
+    color: var(--muted);
+    background: #f1f5f9;
+    border-radius: 10px;
+    padding: .1rem .5rem;
+    display: inline-block;
+  }
+  .summary-pill {
+    border-radius: 20px;
+    padding: .35rem .85rem;
+    font-size: .8rem;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .filter-bar {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: .65rem 1rem;
+    display: flex;
+    gap: .75rem;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-bottom: 1rem;
+  }
+  #progressBar {
+    height: 6px;
+    border-radius: 3px;
+    background: var(--success);
+    transition: width .3s;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="topbar">
+  <div>
+    <h5>🧾 Review Statement</h5>
+    <nav aria-label="breadcrumb">
+      <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{{ url_for('credit_cards') }}">CC Bills</a></li>
+        <li class="breadcrumb-item"><a href="{{ url_for('statement_upload') }}">Import</a></li>
+        <li class="breadcrumb-item active">Review</li>
+      </ol>
+    </nav>
+  </div>
+  <a href="{{ url_for('statement_upload') }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-upload me-1"></i>Upload another
+  </a>
+</div>
+
+<!-- ── Summary cards ───────────────────────────────────────────────────────── -->
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md-3">
+    <div class="stat-card bg-grad-purple">
+      <i class="bi bi-list-check icon"></i>
+      <div class="label">Transactions</div>
+      <div class="value">{{ transactions|length }}</div>
+      <div class="sub">{{ upload.bank_name or 'Statement' }}</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-card bg-grad-orange">
+      <i class="bi bi-currency-dollar icon"></i>
+      <div class="label">Total Amount</div>
+      <div class="value">S${{ "%.2f"|format(total_amt) }}</div>
+      <div class="sub">all transactions</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-card bg-grad-blue">
+      <i class="bi bi-hourglass-split icon"></i>
+      <div class="label">Pending</div>
+      <div class="value" id="pendingCount">{{ pending }}</div>
+      <div class="sub">not yet added</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-card bg-grad-green">
+      <i class="bi bi-check2-circle icon"></i>
+      <div class="label">Added</div>
+      <div class="value" id="addedCount">{{ transactions|length - pending }}</div>
+      <div class="sub">to expenses</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Top categories ─────────────────────────────────────────────────────── -->
+{% if top_cats %}
+<div class="card mb-4">
+  <div class="card-header">Spend by Category</div>
+  <div class="card-body d-flex flex-wrap gap-2 py-3">
+    {% for cat, amt in top_cats %}
+    <span class="summary-pill" id="pill-{{ loop.index }}"
+          style="background:var(--primary-light);color:var(--primary)">
+      {{ cat }} &nbsp;·&nbsp; S${{ "%.2f"|format(amt) }}
+    </span>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<!-- ── Progress bar ───────────────────────────────────────────────────────── -->
+<div class="mb-3" style="background:#e2e8f0;border-radius:3px;height:6px;">
+  <div id="progressBar"
+       style="width:{{ ((transactions|length - pending) / transactions|length * 100)|int if transactions else 0 }}%">
+  </div>
+</div>
+
+<!-- ── Add All button ─────────────────────────────────────────────────────── -->
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div class="filter-bar flex-grow-1 me-3 mb-0">
+    <i class="bi bi-search text-muted"></i>
+    <input id="searchInput" type="text" class="form-control border-0 p-0 shadow-none"
+           placeholder="Search description or vendor…"
+           style="background:transparent;font-size:.88rem;">
+    <select id="catFilter" class="form-select border-0 shadow-none p-0"
+            style="background:transparent;font-size:.88rem;max-width:160px;">
+      <option value="">All categories</option>
+      {% for cat in categories %}
+        <option value="{{ cat }}">{{ cat }}</option>
+      {% endfor %}
+    </select>
+    <select id="statusFilter" class="form-select border-0 shadow-none p-0"
+            style="background:transparent;font-size:.88rem;max-width:130px;">
+      <option value="">All status</option>
+      <option value="pending">Pending only</option>
+      <option value="added">Added only</option>
+    </select>
+  </div>
+  <button class="btn btn-success btn-sm px-3" id="addAllBtn">
+    <i class="bi bi-plus-circle me-1"></i>Add All Pending
+  </button>
+</div>
+
+<!-- ── Transactions table ─────────────────────────────────────────────────── -->
+<div class="card">
+  <div class="card-body p-0">
+    <table class="table table-hover mb-0" id="txnTable">
+      <thead>
+        <tr>
+          <th style="width:100px">Date</th>
+          <th>Description</th>
+          <th style="width:180px">Category</th>
+          <th style="width:100px" class="text-end">Amount</th>
+          <th style="width:60px" class="text-center">Add</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for txn in transactions %}
+        <tr class="txn-row {% if txn.added %}added{% endif %}"
+            id="row-{{ txn.id }}"
+            data-id="{{ txn.id }}"
+            data-desc="{{ txn.description|lower }}"
+            data-vendor="{{ txn.shop_name|lower }}"
+            data-cat="{{ txn.category }}"
+            data-status="{{ 'added' if txn.added else 'pending' }}">
+
+          <td style="font-size:.82rem;color:var(--muted)">{{ txn.date }}</td>
+
+          <td>
+            <div style="font-size:.88rem;font-weight:500;color:var(--text)">
+              {{ txn.description[:60] }}{% if txn.description|length > 60 %}…{% endif %}
+            </div>
+            {% if txn.shop_name %}
+            <span class="vendor-chip mt-1">
+              <i class="bi bi-shop" style="font-size:.65rem"></i>
+              {{ txn.shop_name }}
+            </span>
+            {% endif %}
+          </td>
+
+          <td>
+            <select class="cat-select"
+                    onchange="this.dataset.changed='1'"
+                    id="cat-{{ txn.id }}">
+              {% for cat in categories %}
+                <option value="{{ cat }}"
+                  {% if cat == txn.category %}selected{% endif %}>
+                  {{ cat }}
+                </option>
+              {% endfor %}
+            </select>
+          </td>
+
+          <td class="text-end fw-semibold" style="font-size:.9rem">
+            S${{ "%.2f"|format(txn.amount) }}
+          </td>
+
+          <td class="text-center">
+            <button class="btn-add"
+                    onclick="addTxn('{{ txn.id }}', '{{ upload.id }}')"
+                    title="Add to expenses"
+                    {% if txn.added %}disabled{% endif %}>
+              +
+            </button>
+            <span class="added-badge">
+              <i class="bi bi-check2"></i> Added
+            </span>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    {% if not transactions %}
+    <div class="text-center py-5 text-muted">
+      <i class="bi bi-inbox" style="font-size:2rem"></i>
+      <p class="mt-2">No transactions found.</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Toast notification -->
+<div class="position-fixed bottom-0 end-0 p-3" style="z-index:9999">
+  <div id="toast" class="toast align-items-center text-white border-0" role="alert">
+    <div class="d-flex">
+      <div class="toast-body" id="toastMsg">Saved!</div>
+      <button type="button" class="btn-close btn-close-white me-2 m-auto"
+              data-bs-dismiss="toast"></button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const UPLOAD_ID   = "{{ upload.id }}";
+const CSRF_TOKEN  = "{{ csrf_token() }}";
+let addedCount  = {{ transactions|length - pending }};
+let pendingCount= {{ pending }};
+const totalCount= {{ transactions|length }};
+
+// ── Toast helper ─────────────────────────────────────────────────────────────
+function showToast(msg, ok = true) {
+  const el  = document.getElementById('toast');
+  const msgEl = document.getElementById('toastMsg');
+  msgEl.textContent = msg;
+  el.className = `toast align-items-center text-white border-0 bg-${ok ? 'success' : 'danger'}`;
+  bootstrap.Toast.getOrCreateInstance(el, {delay: 2500}).show();
+}
+
+// ── Update progress ───────────────────────────────────────────────────────────
+function updateProgress() {
+  const pct = totalCount > 0 ? (addedCount / totalCount * 100) : 0;
+  document.getElementById('progressBar').style.width = pct + '%';
+  document.getElementById('addedCount').textContent   = addedCount;
+  document.getElementById('pendingCount').textContent  = pendingCount;
+}
+
+// ── Add single transaction ────────────────────────────────────────────────────
+async function addTxn(txnId, uploadId) {
+  const btn  = document.querySelector(`#row-${txnId} .btn-add`);
+  const cat  = document.getElementById(`cat-${txnId}`).value;
+  if (!btn || btn.disabled) return;
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm" style="width:.75rem;height:.75rem"></span>';
+
+  try {
+    const res = await fetch("{{ url_for('add_statement_transaction') }}", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRFToken": CSRF_TOKEN,
+      },
+      body: JSON.stringify({ upload_id: uploadId, txn_id: txnId, category: cat }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      const row = document.getElementById(`row-${txnId}`);
+      row.classList.add('added');
+      row.dataset.status = 'added';
+      addedCount++;
+      pendingCount = Math.max(0, pendingCount - 1);
+      updateProgress();
+      showToast('Added to expenses ✓');
+    } else {
+      btn.disabled = false;
+      btn.textContent = '+';
+      showToast(data.error || 'Error adding transaction', false);
+    }
+  } catch (err) {
+    btn.disabled = false;
+    btn.textContent = '+';
+    showToast('Network error — please retry', false);
+  }
+}
+
+// ── Add All Pending ───────────────────────────────────────────────────────────
+document.getElementById('addAllBtn').addEventListener('click', async () => {
+  const rows = document.querySelectorAll('.txn-row:not(.added)');
+  if (!rows.length) { showToast('All transactions already added!'); return; }
+
+  const addAllBtn = document.getElementById('addAllBtn');
+  addAllBtn.disabled = true;
+  addAllBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Adding…';
+
+  for (const row of rows) {
+    const txnId = row.dataset.id;
+    await addTxn(txnId, UPLOAD_ID);
+    await new Promise(r => setTimeout(r, 120));  // slight delay to avoid DB contention
+  }
+  addAllBtn.innerHTML = '<i class="bi bi-check2-circle me-1"></i>All Added';
+});
+
+// ── Filter / search ───────────────────────────────────────────────────────────
+function applyFilters() {
+  const search = document.getElementById('searchInput').value.toLowerCase();
+  const cat    = document.getElementById('catFilter').value;
+  const status = document.getElementById('statusFilter').value;
+
+  document.querySelectorAll('.txn-row').forEach(row => {
+    const matchSearch = !search
+      || row.dataset.desc.includes(search)
+      || row.dataset.vendor.includes(search);
+    const matchCat    = !cat    || row.dataset.cat === cat;
+    const matchStatus = !status || row.dataset.status === status;
+    row.style.display = (matchSearch && matchCat && matchStatus) ? '' : 'none';
+  });
+}
+
+document.getElementById('searchInput').addEventListener('input', applyFilters);
+document.getElementById('catFilter').addEventListener('change', applyFilters);
+document.getElementById('statusFilter').addEventListener('change', applyFilters);
+</script>
+{% endblock %}

@@ -40,10 +40,16 @@ HEALTHCHECK --interval=30s \
   CMD curl -f http://localhost:5001/health || exit 1
 
 # Start with gunicorn (production WSGI server — never use flask dev server in prod)
+# NOTE: workers=1 is intentional.
+# Prometheus counters live in process memory. With >1 workers, each process
+# accumulates its own counts and /metrics only returns the scraping worker's
+# values — so Grafana sees a fraction of real events (or 0).
+# 1 worker + 4 threads gives full concurrency for I/O-bound Flask routes
+# while keeping all counters in a single shared process.
 CMD ["gunicorn", \
      "--bind", "0.0.0.0:5001", \
-     "--workers", "2", \
-     "--threads", "2", \
+     "--workers", "1", \
+     "--threads", "4", \
      "--timeout", "120", \
      "--access-logfile", "-", \
      "--error-logfile", "-", \
