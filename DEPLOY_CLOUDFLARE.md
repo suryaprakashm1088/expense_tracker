@@ -1,5 +1,7 @@
 # Setup Guide — Option 2: Custom Domain via Cloudflare Tunnel
 
+> ✅ **Works on Mac and Windows.** Platform-specific steps are marked clearly below.
+
 Run the Expense Tracker permanently on **your own computer** behind your own domain. The URL never changes, SSL is handled by Cloudflare, and you don't need to open any ports on your router.
 
 ```
@@ -131,8 +133,19 @@ cd expense_tracker
 
 ### Step 7 — Create your `.env` file
 
+**🍎 Mac / 🐧 Linux:**
 ```bash
 cp .env.example .env
+```
+
+**🪟 Windows (Command Prompt):**
+```cmd
+copy .env.example .env
+```
+
+**🪟 Windows (PowerShell):**
+```powershell
+Copy-Item .env.example .env
 ```
 
 Open `.env` and fill in:
@@ -150,8 +163,7 @@ TWILIO_WHATSAPP_NUMBER=whatsapp:+14155238886
 # ── Flask ────────────────────────────────────────────────────────────────────
 FLASK_ENV=production
 
-# REQUIRED — generate this, do not leave as placeholder:
-#   python3 -c "import secrets; print(secrets.token_hex(64))"
+# REQUIRED — generate this, do not leave as placeholder
 SECRET_KEY=paste-64-char-hex-here
 
 # ── Your permanent domain ─────────────────────────────────────────────────
@@ -169,16 +181,30 @@ GRAFANA_ADMIN_PASSWORD=choose-a-strong-password
 ```
 
 > 🔑 **SECRET_KEY is required.** Generate it:
+>
+> **🍎 Mac / 🐧 Linux:**
 > ```bash
 > python3 -c "import secrets; print(secrets.token_hex(64))"
+> ```
+> **🪟 Windows (PowerShell):**
+> ```powershell
+> python -c "import secrets; print(secrets.token_hex(64))"
 > ```
 
 ### Step 8 — Install Docker Desktop
 
 Download from [docker.com/products/docker-desktop](https://www.docker.com/products/docker-desktop).
 
-- **Mac:** Open Docker Desktop and wait for the whale icon to stop animating.
-- **Windows:** Enable WSL 2 integration when prompted.
+**🍎 Mac:**
+- Open Docker Desktop after installing
+- Wait until the whale icon in the menu bar stops animating
+- No extra configuration needed
+
+**🪟 Windows:**
+- Run the installer — it will prompt you to enable **WSL 2** (Windows Subsystem for Linux)
+- Click **Yes / Enable** when prompted — this is required for Docker to work
+- Restart your computer if asked
+- Open Docker Desktop and wait for the whale icon in the taskbar to stop animating
 
 ---
 
@@ -293,25 +319,46 @@ The **Expense Tracker** dashboard loads automatically.
 
 ## Part 9 — AI receipt scanning (optional)
 
-### LM Studio (best, local, Mac)
+The app tries these in order: **LM Studio → Ollama → Claude Vision API**
 
-1. Download [lmstudio.ai](https://lmstudio.ai)
-2. Search for and download a vision model (e.g. `qwen2.5-vl-7b-instruct`)
-3. Go to **Local Server** tab → **Start Server**
+### LM Studio (best — free, local)
 
-The app is pre-configured to use LM Studio at `http://localhost:1234`. No `.env` changes needed.
+**🍎 Mac (Apple Silicon — Metal GPU):**
+1. Download [lmstudio.ai](https://lmstudio.ai) and install the Mac app
+2. Open LM Studio → **Search** tab → search `qwen2.5-vl-7b-instruct` → Download (~5 GB)
+3. Go to **Local Server** tab → select the model → **Start Server**
+4. No `.env` changes needed — already configured
 
-### Ollama (fallback, local)
+> Apple Silicon uses Metal GPU acceleration — fast and efficient.
 
+**🪟 Windows:**
+1. Download [lmstudio.ai](https://lmstudio.ai) and install the Windows app
+2. Open LM Studio → **Search** tab → search `qwen2.5-vl-7b-instruct` → Download (~5 GB)
+3. Go to **Local Server** tab → select the model → **Start Server**
+4. No `.env` changes needed — already configured
+
+> Uses NVIDIA/AMD GPU if available (CUDA/ROCm). Falls back to CPU if no GPU — slower but still works. For CPU-only machines use `qwen2.5-vl-3b-instruct` (2 GB, faster).
+
+### Ollama (fallback — free, local)
+
+**🍎 Mac:**
 ```bash
 brew install ollama
-ollama serve
+ollama serve          # keep this running
+ollama pull llava:7b
+```
+
+**🪟 Windows:**
+1. Download the installer from [ollama.com](https://ollama.com) and install it
+2. Ollama starts as a background service automatically
+3. Open **PowerShell** or **Command Prompt** and run:
+```cmd
 ollama pull llava:7b
 ```
 
 ### Claude Vision (cloud fallback)
 
-Uncomment in `.env`:
+Works identically on Mac and Windows. Uncomment in `.env`:
 ```bash
 ANTHROPIC_API_KEY=sk-ant-api03-...
 ```
@@ -364,6 +411,7 @@ docker compose -f docker-compose.local.yml up -d --build app
 - [ ] If paid Twilio number — WhatsApp Business API approval done (1–3 days)
 - [ ] Domain nameservers point to Cloudflare (if not bought from Cloudflare)
 - [ ] `ANTHROPIC_API_KEY` set if you want AI summaries
+- [ ] **Windows only:** WSL 2 enabled and Docker Desktop showing "Engine running"
 
 ---
 
@@ -380,6 +428,8 @@ docker compose -f docker-compose.local.yml up -d --build app
 | Receipt scan fails | Check LM Studio Local Server is started; or set `ANTHROPIC_API_KEY` |
 | App slow to load | Normal on first request after a long idle — gunicorn warms up in a second |
 | Container not starting | `docker compose -f docker-compose.local.yml logs` to see the full error |
+| Docker not starting (Windows) | Make sure WSL 2 is enabled and Docker Desktop shows "Engine running" |
+| `docker` command not found (Windows) | Docker Desktop is not running — open it from Start Menu first |
 
 ---
 

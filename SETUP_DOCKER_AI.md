@@ -1,11 +1,13 @@
 # Local AI Setup Guide
 
+> ✅ **Works on Mac and Windows.** Platform-specific steps are marked clearly below.
+
 The app uses a **three-tier AI fallback** for receipt scanning. It tries each engine in order and uses the first one that's available:
 
 | Priority | Engine | Type | Cost | Receipt Scanning | AI Summaries |
 |---|---|---|---|---|---|
-| 1st | **LM Studio** | Local (Mac GPU) | Free | ✅ Yes | ❌ No |
-| 2nd | **Ollama** | Local (Mac GPU) | Free | ✅ Yes | ❌ No |
+| 1st | **LM Studio** | Local (GPU) | Free | ✅ Yes | ❌ No |
+| 2nd | **Ollama** | Local (GPU) | Free | ✅ Yes | ❌ No |
 | 3rd | **Claude Vision API** | Cloud | Pay-per-use | ✅ Yes | ✅ Yes (Haiku) |
 
 **All AI is optional.** The app works fine without any of these — receipt photos are accepted but not auto-scanned, and daily summaries are skipped.
@@ -14,11 +16,14 @@ The app uses a **three-tier AI fallback** for receipt scanning. It tries each en
 
 ## Option A — LM Studio (recommended primary engine)
 
-LM Studio is a Mac desktop app that hosts any vision model locally with Metal GPU acceleration. It exposes an OpenAI-compatible API on port 1234.
+LM Studio hosts any vision model locally and exposes an OpenAI-compatible API on port 1234.
 
 ### Step 1 — Download LM Studio
 
-Go to [lmstudio.ai](https://lmstudio.ai) → download and install the Mac app.
+Go to [lmstudio.ai](https://lmstudio.ai) → download and install the app for your OS.
+
+- **🍎 Mac:** `.dmg` installer — drag to Applications
+- **🪟 Windows:** `.exe` installer — run and follow the prompts
 
 ### Step 2 — Download a vision model
 
@@ -26,13 +31,15 @@ Inside LM Studio:
 1. Click the **Search** tab (magnifying glass icon)
 2. Search for a vision model. Recommended options:
 
-| Model | Size | Quality | Speed (M-series) |
+| Model | Size | Quality | Best for |
 |---|---|---|---|
-| `qwen2.5-vl-7b-instruct` | ~5 GB | Excellent | Fast |
-| `llava-1.5-7b` | ~4 GB | Good | Very fast |
-| `qwen2.5-vl-3b-instruct` | ~2 GB | Decent | Very fast |
+| `qwen2.5-vl-7b-instruct` | ~5 GB | Excellent | Mac M-series, Windows with GPU |
+| `llava-1.5-7b` | ~4 GB | Good | Mac M-series, Windows with GPU |
+| `qwen2.5-vl-3b-instruct` | ~2 GB | Decent | CPU-only or low RAM machines |
 
 3. Click **Download** on your chosen model
+
+> **🪟 Windows — no GPU?** Use `qwen2.5-vl-3b-instruct` (2 GB). It runs on CPU — slower but works fine for occasional receipt scanning.
 
 ### Step 3 — Start the Local Server
 
@@ -50,34 +57,45 @@ curl http://localhost:1234/v1/models
 
 ### Step 4 — Keep it running
 
-LM Studio must be running whenever you want receipt scanning to work. It does not auto-start — you need to open the app and start the server manually.
+LM Studio must be running whenever you want receipt scanning to work. It does not auto-start — open the app and start the server manually each time.
 
-> **Tip:** Add LM Studio to your Mac Login Items (System Settings → General → Login Items) so it opens automatically. You still need to start the Local Server inside the app.
+**🍎 Mac — auto-start tip:**
+> Add LM Studio to Login Items: **System Settings → General → Login Items → +**. You still need to start the Local Server inside the app after it opens.
+
+**🪟 Windows — auto-start tip:**
+> Pin LM Studio to your Taskbar or Startup folder (`Win+R` → `shell:startup`) so it opens on login. You still need to start the Local Server inside the app.
 
 ---
 
 ## Option B — Ollama (fallback engine)
 
-Ollama runs as a background service on your Mac and hosts vision models locally.
+Ollama hosts vision models locally as a background service.
 
 ### Install
 
+**🍎 Mac:**
 ```bash
 brew install ollama
 ```
+> Don't have Homebrew? Install it: `/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"`
 
-Or download from [ollama.com](https://ollama.com).
+**🪟 Windows:**
+1. Download the installer from [ollama.com](https://ollama.com)
+2. Run the `.exe` — Ollama installs as a **background Windows service** that starts automatically on login (no manual start needed)
 
 ### Pull a vision model
 
 ```bash
 ollama pull llava:7b        # ~4 GB — good balance of speed and accuracy
-# OR for higher quality (slower, needs more RAM):
+# OR for higher quality (needs more RAM):
 ollama pull llava:13b       # ~8 GB
 ```
 
+This command is the same on Mac and Windows — run it in any terminal.
+
 ### Start Ollama
 
+**🍎 Mac:**
 ```bash
 # Run in a terminal (stops when terminal closes)
 ollama serve
@@ -85,6 +103,11 @@ ollama serve
 # OR run as a background service (starts automatically on login)
 brew services start ollama
 ```
+
+**🪟 Windows:**
+Ollama starts automatically as a Windows service after installation. If it's not running:
+1. Search **"Ollama"** in the Start Menu and open it
+2. Or restart the service: open **Services** (`Win+R` → `services.msc`) → find **Ollama** → Start
 
 ### Verify
 
@@ -97,7 +120,7 @@ curl http://localhost:11434/api/tags
 
 ## Option C — Claude Vision API (cloud fallback)
 
-If neither LM Studio nor Ollama is available, the app falls back to Anthropic's Claude Vision API. This also powers the **AI daily summary** feature.
+If neither LM Studio nor Ollama is available, the app falls back to Anthropic's Claude Vision API. This also powers the **AI daily summary** feature. Works identically on Mac and Windows.
 
 ### Get an API key
 
@@ -171,23 +194,28 @@ ANTHROPIC_API_KEY=sk-ant-api03-...
 |---|---|
 | "LM Studio unavailable" in logs | Open LM Studio → Local Server → Start Server |
 | LM Studio running but scan fails | Check the loaded model name matches `LM_STUDIO_VISION_MODEL` in compose file |
-| "Ollama unreachable" | Run `ollama serve` or `brew services start ollama` |
+| "Ollama unreachable" (Mac) | Run `ollama serve` or `brew services start ollama` |
+| "Ollama unreachable" (Windows) | Open Ollama from Start Menu or restart via Services (`services.msc`) |
 | Ollama: model not found | Run `ollama pull llava:7b` |
 | All local AI unavailable | Add `ANTHROPIC_API_KEY` to `.env` for cloud fallback |
-| Slow on first receipt | Normal — model loads into Metal GPU RAM on first call; fast after |
-| Out of memory | Switch to a smaller model (e.g. `qwen2.5-vl-3b` or `llava:7b`) |
+| Slow on first receipt | Normal — model loads into GPU RAM on first call; fast after that |
+| Out of memory (Mac) | Switch to `qwen2.5-vl-3b-instruct` (2 GB) |
+| Out of memory (Windows) | Switch to `qwen2.5-vl-3b-instruct` (2 GB) or enable GPU in LM Studio settings |
 
 ---
 
 ## Architecture diagram
 
 ```
-Mac (Apple Silicon — Metal GPU)
+Your Computer
 │
-├── LM Studio  →  port 1234  (primary vision)
+├── 🍎 Mac: Apple Silicon Metal GPU
+│   🪟 Windows: NVIDIA/AMD GPU (or CPU fallback)
+│
+├── LM Studio  →  port 1234   (primary vision)
 │   └── qwen2.5-vl-7b or any vision model
 │
-├── Ollama     →  port 11434 (fallback vision)
+├── Ollama     →  port 11434  (fallback vision)
 │   └── llava:7b
 │
 └── Docker Desktop
