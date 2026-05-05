@@ -5,35 +5,51 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>{% block title %}Expense Tracker{% endblock %}</title>
 
-  <!-- Bootstrap 5 -->
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-  <!-- Bootstrap Icons -->
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
-  <!-- Google Fonts -->
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-  <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+  {% if mobile_ui %}
+  <link rel="manifest" href="/static/manifest.json">
+  <meta name="theme-color" content="#312e81">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Expenses">
+  <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
+  {% else %}
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations()
+        .then(function(regs) { regs.forEach(function(r) { r.unregister(); }); });
+      if (window.caches) {
+        caches.keys().then(function(names) { names.forEach(function(n) { caches.delete(n); }); });
+      }
+    }
+  </script>
+  {% endif %}
 
   <style>
     :root {
-      --primary:   #4f46e5;
+      --primary:       #4f46e5;
       --primary-light: #ede9fe;
-      --success:   #10b981;
-      --warning:   #f59e0b;
-      --danger:    #ef4444;
-      --info:      #3b82f6;
-      --sidebar-w: 240px;
-      --bg:        #f8fafc;
-      --card-bg:   #ffffff;
-      --text:      #1e293b;
-      --muted:     #64748b;
-      --border:    #e2e8f0;
+      --success:       #10b981;
+      --warning:       #f59e0b;
+      --danger:        #ef4444;
+      --info:          #3b82f6;
+      --sidebar-w:     240px;
+      --bottom-nav-h:  62px;
+      --bg:            #f8fafc;
+      --card-bg:       #ffffff;
+      --text:          #1e293b;
+      --muted:         #64748b;
+      --border:        #e2e8f0;
     }
 
-    * { font-family: 'Inter', sans-serif; }
-    body { background: var(--bg); color: var(--text); min-height: 100vh; }
+    *, *::before, *::after { font-family: 'Inter', sans-serif; box-sizing: border-box; }
+    body { background: var(--bg); color: var(--text); min-height: 100vh; margin: 0; }
 
-    /* ── Sidebar ─────────────────────────────────────────────── */
+    /* ── Desktop sidebar ──────────────────────────────────────── */
     .sidebar {
       width: var(--sidebar-w);
       min-height: 100vh;
@@ -42,65 +58,119 @@
       top: 0; left: 0;
       display: flex;
       flex-direction: column;
-      padding: 0;
       z-index: 100;
+      overflow-y: auto;
     }
     .sidebar-brand {
       padding: 1.5rem 1.25rem 1rem;
       border-bottom: 1px solid rgba(255,255,255,0.1);
+      flex-shrink: 0;
     }
-    .sidebar-brand h4 {
-      color: #fff;
-      font-weight: 700;
-      font-size: 1.1rem;
-      margin: 0;
-    }
-    .sidebar-brand small { color: rgba(255,255,255,0.5); font-size: .75rem; }
+    .sidebar-brand h4 { color: #fff; font-weight: 700; font-size: 1.05rem; margin: 0; }
+    .sidebar-brand small { color: rgba(255,255,255,0.5); font-size: .72rem; }
     .nav-section-label {
       color: rgba(255,255,255,0.35);
-      font-size: .65rem;
+      font-size: .62rem;
       font-weight: 600;
-      letter-spacing: .08em;
+      letter-spacing: .1em;
       text-transform: uppercase;
-      padding: 1rem 1.25rem .25rem;
+      padding: 1rem 1.25rem .3rem;
     }
     .sidebar .nav-link {
       color: rgba(255,255,255,0.7);
-      padding: .55rem 1.25rem;
+      padding: .5rem 1.25rem;
       border-radius: 8px;
-      margin: 2px .75rem;
-      font-size: .88rem;
+      margin: 1px .75rem;
+      font-size: .86rem;
       font-weight: 500;
-      transition: all .2s;
+      transition: background .15s, color .15s;
       display: flex;
       align-items: center;
-      gap: .6rem;
+      gap: .55rem;
     }
-    .sidebar .nav-link:hover,
-    .sidebar .nav-link.active {
-      background: rgba(255,255,255,0.12);
-      color: #fff;
-    }
-    .sidebar .nav-link i { font-size: 1rem; width: 20px; text-align: center; }
+    .sidebar .nav-link:hover  { background: rgba(255,255,255,0.1); color: #fff; }
+    .sidebar .nav-link.active { background: rgba(255,255,255,0.14); color: #fff; }
+    .sidebar .nav-link i { font-size: .95rem; width: 18px; text-align: center; flex-shrink: 0; }
 
-    /* ── Main content ─────────────────────────────────────────── */
-    .main-content {
+    /* ── Main content — desktop vs mobile via class ───────────── */
+    .main-desktop {
       margin-left: var(--sidebar-w);
-      padding: 2rem 2rem 3rem;
       min-height: 100vh;
+      padding: 2rem 2rem 3rem;
+    }
+    .main-mobile {
+      min-height: 100vh;
+      padding: 0 0 calc(var(--bottom-nav-h) + env(safe-area-inset-bottom, 0px) + 0.5rem);
     }
 
-    /* ── Top bar ──────────────────────────────────────────────── */
-    .topbar {
+    /* ── Mobile top bar ───────────────────────────────────────── */
+    .mobile-topbar {
       display: flex;
       align-items: center;
       justify-content: space-between;
+      padding: .75rem 1rem;
+      background: linear-gradient(160deg, #1e1b4b 0%, #312e81 100%);
+      color: #fff;
+      margin-bottom: 1rem;
+    }
+    .mobile-topbar .brand { font-size: .95rem; font-weight: 700; }
+    .mobile-topbar .user-pill {
+      font-size: .72rem;
+      background: rgba(255,255,255,.12);
+      border-radius: 20px;
+      padding: .2rem .65rem;
+      color: rgba(255,255,255,.85);
+      display: flex;
+      align-items: center;
+      gap: .3rem;
+    }
+    .mobile-page-body { padding: 0 1rem; }
+
+    /* ── Mobile bottom nav ────────────────────────────────────── */
+    .bottom-nav {
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      height: calc(var(--bottom-nav-h) + env(safe-area-inset-bottom, 0px));
+      padding-bottom: env(safe-area-inset-bottom, 0px);
+      background: linear-gradient(160deg, #1e1b4b 0%, #312e81 100%);
+      border-top: 1px solid rgba(255,255,255,0.12);
+      z-index: 200;
+      display: flex;
+      align-items: stretch;
+      justify-content: space-around;
+    }
+    .bottom-nav a {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 2px;
+      color: rgba(255,255,255,0.55);
+      text-decoration: none;
+      font-size: .6rem;
+      font-weight: 500;
+      padding: 0 .25rem;
+      transition: color .2s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .bottom-nav a .bn-icon { font-size: 1.3rem; line-height: 1; }
+    .bottom-nav a.active,
+    .bottom-nav a:active   { color: #a5b4fc; }
+    .bottom-nav a.active .bn-icon { filter: drop-shadow(0 0 6px rgba(165,180,252,.8)); }
+
+    /* ── Shared components ────────────────────────────────────── */
+    .topbar {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
       margin-bottom: 1.75rem;
+      flex-wrap: wrap;
+      gap: .75rem;
     }
     .topbar h5 { font-weight: 700; font-size: 1.3rem; margin: 0; }
     .topbar .breadcrumb { margin: 0; font-size: .8rem; }
 
-    /* ── Cards ────────────────────────────────────────────────── */
     .card {
       border: 1px solid var(--border);
       border-radius: 14px;
@@ -115,7 +185,6 @@
       font-size: .95rem;
     }
 
-    /* ── Stat cards ───────────────────────────────────────────── */
     .stat-card {
       border-radius: 14px;
       padding: 1.25rem 1.5rem;
@@ -131,21 +200,20 @@
       border-radius: 50%;
       background: rgba(255,255,255,0.08);
     }
-    .stat-card .label  { font-size: .78rem; font-weight: 500; opacity: .85; }
-    .stat-card .value  { font-size: 1.7rem; font-weight: 700; line-height: 1.2; }
-    .stat-card .sub    { font-size: .78rem; opacity: .75; margin-top: .2rem; }
-    .stat-card i.icon  {
+    .stat-card .label { font-size: .78rem; font-weight: 500; opacity: .85; }
+    .stat-card .value { font-size: 1.7rem; font-weight: 700; line-height: 1.2; }
+    .stat-card .sub   { font-size: .78rem; opacity: .75; margin-top: .2rem; }
+    .stat-card i.icon {
       font-size: 1.6rem;
       position: absolute; top: 1.2rem; right: 1.2rem;
       opacity: .3;
     }
 
-    .bg-grad-purple  { background: linear-gradient(135deg,#4f46e5,#7c3aed); }
-    .bg-grad-green   { background: linear-gradient(135deg,#059669,#10b981); }
-    .bg-grad-orange  { background: linear-gradient(135deg,#d97706,#f59e0b); }
-    .bg-grad-blue    { background: linear-gradient(135deg,#2563eb,#3b82f6); }
+    .bg-grad-purple { background: linear-gradient(135deg,#4f46e5,#7c3aed); }
+    .bg-grad-green  { background: linear-gradient(135deg,#059669,#10b981); }
+    .bg-grad-orange { background: linear-gradient(135deg,#d97706,#f59e0b); }
+    .bg-grad-blue   { background: linear-gradient(135deg,#2563eb,#3b82f6); }
 
-    /* ── Table ────────────────────────────────────────────────── */
     .table thead th {
       background: #f1f5f9;
       font-size: .78rem;
@@ -158,7 +226,6 @@
     .table td { vertical-align: middle; font-size: .88rem; }
     .table tbody tr:hover { background: #f8faff; }
 
-    /* ── Category badge ───────────────────────────────────────── */
     .cat-badge {
       display: inline-flex;
       align-items: center;
@@ -169,13 +236,9 @@
       font-weight: 500;
     }
 
-    /* ── Progress bar (summary) ───────────────────────────────── */
     .progress { height: 8px; border-radius: 4px; }
-
-    /* ── Alerts ───────────────────────────────────────────────── */
     .alert { border-radius: 10px; font-size: .9rem; }
 
-    /* ── Form ─────────────────────────────────────────────────── */
     .form-control, .form-select {
       border-radius: 8px;
       font-size: .9rem;
@@ -185,23 +248,123 @@
       border-color: var(--primary);
       box-shadow: 0 0 0 3px rgba(79,70,229,.15);
     }
-    .btn-primary {
-      background: var(--primary);
-      border-color: var(--primary);
-    }
+    .btn-primary { background: var(--primary); border-color: var(--primary); }
     .btn-primary:hover { background: #4338ca; border-color: #4338ca; }
 
-    /* ── Responsive ───────────────────────────────────────────── */
-    @media (max-width: 768px) {
-      .sidebar { display: none; }
-      .main-content { margin-left: 0; padding: 1rem; }
+    /* ════════════════════════════════════════════════════
+       MOBILE CONTENT OVERRIDES
+       Applied only inside .main-mobile (mexpensemanager.mydailybot.com)
+       Fixes all desktop-oriented templates for phone screens
+       without touching any page template files.
+       ════════════════════════════════════════════════════ */
+
+    /* Prevent horizontal overflow on all mobile pages */
+    .main-mobile, .main-mobile * { max-width: 100%; }
+    .main-mobile .mobile-page-body { overflow-x: hidden; }
+
+    /* ── Page-level topbar (inside main content area) ── */
+    .main-mobile .topbar {
+      margin-bottom: 1rem;
+      gap: .5rem;
     }
+    .main-mobile .topbar h5 {
+      font-size: 1.05rem;
+    }
+    /* Hide breadcrumbs — wastes space on mobile */
+    .main-mobile .breadcrumb { display: none !important; }
+
+    /* ── Stat cards — 2-per-row, compact ── */
+    .main-mobile .stat-card {
+      padding: .9rem 1rem;
+    }
+    .main-mobile .stat-card .value {
+      font-size: 1.35rem;
+    }
+    .main-mobile .stat-card .label { font-size: .72rem; }
+    .main-mobile .stat-card .sub   { font-size: .7rem; }
+    .main-mobile .stat-card i.icon { font-size: 1.2rem; }
+
+    /* ── Cards — reduce padding on mobile ── */
+    .main-mobile .card { border-radius: 10px; }
+    .main-mobile .card-header {
+      padding: .7rem 1rem .6rem;
+      font-size: .85rem;
+    }
+    .main-mobile .card-body { padding: .85rem; }
+
+    /* ── Tables — compact + horizontal scroll ── */
+    .main-mobile .table-responsive {
+      border-radius: 8px;
+      -webkit-overflow-scrolling: touch;
+    }
+    .main-mobile .table thead th {
+      font-size: .68rem;
+      padding: .5rem .6rem;
+      white-space: nowrap;
+    }
+    .main-mobile .table td {
+      font-size: .78rem;
+      padding: .5rem .6rem;
+    }
+    /* Action button columns — icon only, save space */
+    .main-mobile .table .btn-sm {
+      padding: 2px 6px;
+      font-size: .72rem;
+    }
+
+    /* ── Filter forms — stack all fields ── */
+    .main-mobile .card-body .row.g-2 > [class*="col-"] {
+      flex: 0 0 100%;
+      max-width: 100%;
+    }
+    .main-mobile .form-select,
+    .main-mobile .form-control {
+      font-size: .88rem;
+      padding: .45rem .75rem;
+    }
+    .main-mobile .btn { min-height: 40px; }
+
+    /* ── Charts — force full width ── */
+    .main-mobile .col-lg-5,
+    .main-mobile .col-lg-7,
+    .main-mobile .col-lg-6,
+    .main-mobile .col-lg-4,
+    .main-mobile .col-lg-8 {
+      flex: 0 0 100%;
+      max-width: 100%;
+    }
+
+    /* ── Summary / accordion rows ── */
+    .main-mobile .accordion-button {
+      font-size: .85rem;
+      padding: .65rem .9rem;
+    }
+
+    /* ── Alerts ── */
+    .main-mobile .alert { font-size: .82rem; padding: .6rem .9rem; }
+
+    /* ── Badge & category chips ── */
+    .main-mobile .cat-badge { font-size: .68rem; padding: .15rem .5rem; }
+
+    /* ── Row gutters — reduce on mobile ── */
+    .main-mobile .row.g-3 { --bs-gutter-x: .75rem; --bs-gutter-y: .75rem; }
+    .main-mobile .mb-4 { margin-bottom: 1rem !important; }
+    .main-mobile .mb-3 { margin-bottom: .75rem !important; }
+    .main-mobile .mb-2 { margin-bottom: .5rem !important; }
+
+    /* ── Budget / credit-card amount display ── */
+    .main-mobile h2, .main-mobile h3 { font-size: 1.2rem; }
+    .main-mobile h4 { font-size: 1.05rem; }
+
+    /* ── Progress bars label rows ── */
+    .main-mobile .d-flex.justify-content-between { flex-wrap: wrap; gap: .25rem; }
   </style>
   {% block head %}{% endblock %}
 </head>
 <body>
 
-<!-- ── Sidebar ── -->
+{# ── Desktop: sidebar (only on expensemanager.mydailybot.com) ── #}
+{% if not mobile_ui %}
 <aside class="sidebar">
   <div class="sidebar-brand">
     <h4>💰 Family Expenses</h4>
@@ -210,121 +373,190 @@
 
   <div class="nav-section-label">Main Menu</div>
   <nav class="nav flex-column">
-    <a class="nav-link {% if request.endpoint == 'index' %}active{% endif %}"   href="{{ url_for('index') }}">
+    <a class="nav-link {% if request.endpoint == 'index' %}active{% endif %}"
+       href="{{ url_for('index') }}">
       <i class="bi bi-grid-1x2-fill"></i> Dashboard
     </a>
-    <a class="nav-link {% if request.endpoint == 'add' %}active{% endif %}"     href="{{ url_for('add') }}">
+    <a class="nav-link {% if request.endpoint == 'add' %}active{% endif %}"
+       href="{{ url_for('add') }}">
       <i class="bi bi-plus-circle-fill"></i> Add Expense
     </a>
-    <a class="nav-link {% if request.endpoint == 'expenses' %}active{% endif %}" href="{{ url_for('expenses') }}">
+    <a class="nav-link {% if request.endpoint == 'expenses' %}active{% endif %}"
+       href="{{ url_for('expenses') }}">
       <i class="bi bi-list-ul"></i> All Expenses
     </a>
-    <a class="nav-link {% if request.endpoint == 'summary' %}active{% endif %}" href="{{ url_for('summary') }}">
+    <a class="nav-link {% if request.endpoint == 'summary' %}active{% endif %}"
+       href="{{ url_for('summary') }}">
       <i class="bi bi-bar-chart-fill"></i> Monthly Summary
     </a>
-    <a class="nav-link {% if request.endpoint == 'receipts' %}active{% endif %}" href="{{ url_for('receipts') }}">
+    <a class="nav-link {% if request.endpoint == 'receipts' %}active{% endif %}"
+       href="{{ url_for('receipts') }}">
       <i class="bi bi-receipt"></i> Receipts
     </a>
-    <a class="nav-link {% if request.endpoint == 'budget' %}active{% endif %}" href="{{ url_for('budget') }}">
+    <a class="nav-link {% if request.endpoint == 'budget' %}active{% endif %}"
+       href="{{ url_for('budget') }}">
       <i class="bi bi-piggy-bank-fill" style="color:#10b981"></i> Budget Planner
     </a>
-    <a class="nav-link {% if request.endpoint == 'credit_cards' %}active{% endif %}" href="{{ url_for('credit_cards') }}">
+    <a class="nav-link {% if request.endpoint == 'credit_cards' %}active{% endif %}"
+       href="{{ url_for('credit_cards') }}">
       <i class="bi bi-credit-card-2-front-fill" style="color:#3b82f6"></i> CC Bills
     </a>
-    <a class="nav-link {% if request.endpoint in ['statement_upload','statement_review'] %}active{% endif %}" href="{{ url_for('statement_upload') }}">
+    <a class="nav-link {% if request.endpoint in ['statement_upload','statement_review'] %}active{% endif %}"
+       href="{{ url_for('statement_upload') }}">
       <i class="bi bi-file-earmark-arrow-up" style="color:#8b5cf6"></i> Import Statement
     </a>
-    <a class="nav-link {% if request.endpoint in ['investments','investment_add','investment_edit','investment_delete','investment_refresh_all','investment_refresh_one','investment_search','investment_history'] %}active{% endif %}" href="{{ url_for('investments') }}">
+    <a class="nav-link {% if request.endpoint in ['investments','investment_add','investment_edit','investment_delete','investment_refresh_all','investment_refresh_one','investment_search','investment_history'] %}active{% endif %}"
+       href="{{ url_for('investments') }}">
       <i class="bi bi-graph-up-arrow" style="color:#0d9488"></i> Investments
     </a>
-
-  {# Admin-only navigation #}
-  {% if session.get('admin_logged_in') %}
-    <a class="nav-link {% if request.endpoint in ['categories','edit_category'] %}active{% endif %}" href="{{ url_for('categories') }}">
+    {% if session.get('admin_logged_in') %}
+    <a class="nav-link {% if request.endpoint in ['categories','edit_category'] %}active{% endif %}"
+       href="{{ url_for('categories') }}">
       <i class="bi bi-tags-fill"></i> Categories
     </a>
-    <a class="nav-link {% if request.endpoint == 'shop_mappings' %}active{% endif %}" href="{{ url_for('shop_mappings') }}">
+    <a class="nav-link {% if request.endpoint == 'shop_mappings' %}active{% endif %}"
+       href="{{ url_for('shop_mappings') }}">
       <i class="bi bi-shop"></i> Shop Mappings
     </a>
-
-  <div class="nav-section-label">WhatsApp Bot</div>
-    <a class="nav-link {% if request.endpoint == 'onboarding' %}active{% endif %}" href="{{ url_for('onboarding') }}">
+    <div class="nav-section-label">WhatsApp Bot</div>
+    <a class="nav-link {% if request.endpoint == 'onboarding' %}active{% endif %}"
+       href="{{ url_for('onboarding') }}">
       <i class="bi bi-person-badge-fill" style="color:#a78bfa"></i> Onboarding
     </a>
-    <a class="nav-link {% if request.endpoint == 'members' %}active{% endif %}" href="{{ url_for('members') }}" style="display:flex;align-items:center;justify-content:space-between;">
-      <span><i class="bi bi-whatsapp" style="color:#25D366"></i> Members</span>
+    <a class="nav-link {% if request.endpoint == 'members' %}active{% endif %}"
+       href="{{ url_for('members') }}" style="justify-content:space-between;">
+      <span style="display:flex;align-items:center;gap:.55rem;">
+        <i class="bi bi-whatsapp" style="color:#25D366"></i> Members
+      </span>
       {%- set _pm = pending_count if pending_count is defined else 0 -%}
       {% if _pm > 0 %}
-      <span class="badge rounded-pill" style="background:#ef4444;font-size:.65rem;">{{ _pm }}</span>
+      <span class="badge rounded-pill" style="background:#ef4444;font-size:.62rem;">{{ _pm }}</span>
       {% endif %}
     </a>
-    <a class="nav-link {% if request.endpoint == 'unknown_contacts' %}active{% endif %}" href="{{ url_for('unknown_contacts') }}">
+    <a class="nav-link {% if request.endpoint == 'unknown_contacts' %}active{% endif %}"
+       href="{{ url_for('unknown_contacts') }}">
       <i class="bi bi-shield-exclamation" style="color:#f59e0b"></i> Unknown Contacts
     </a>
-  {% endif %}
+    {% endif %}
   </nav>
 
-  <div style="margin-top:auto; padding:1rem 1.25rem; border-top:1px solid rgba(255,255,255,.1);">
+  <div style="margin-top:auto;padding:1rem 1.25rem;border-top:1px solid rgba(255,255,255,.1);flex-shrink:0;">
     {% if session.get('admin_logged_in') %}
-    <div style="margin-bottom:.6rem;">
-      <div style="color:rgba(255,255,255,.5); font-size:.72rem; margin-bottom:.4rem;">
-        <i class="bi bi-shield-fill-check me-1" style="color:#a78bfa"></i>
-        Admin: <strong style="color:rgba(255,255,255,.8)">{{ session.get('admin_username','admin') }}</strong>
-      </div>
-      <div class="d-flex gap-2">
-        <a href="{{ url_for('change_credentials') }}"
-           style="font-size:.75rem; color:rgba(255,255,255,.55); text-decoration:none;"
-           title="Change username / password">
-          <i class="bi bi-key-fill me-1"></i>Credentials
-        </a>
-        <span style="color:rgba(255,255,255,.2)">|</span>
-        <a href="{{ url_for('logout') }}"
-           style="font-size:.75rem; color:#fca5a5; text-decoration:none;"
-           title="Log out">
-          <i class="bi bi-box-arrow-right me-1"></i>Logout
-        </a>
-      </div>
+    <div style="color:rgba(255,255,255,.45);font-size:.7rem;margin-bottom:.5rem;">
+      <i class="bi bi-shield-fill-check me-1" style="color:#a78bfa"></i>
+      Admin: <strong style="color:rgba(255,255,255,.8)">{{ session.get('admin_username','admin') }}</strong>
     </div>
-    {% elif session.get('member_logged_in') %}
-    <div style="margin-bottom:.6rem;">
-      <div style="color:rgba(255,255,255,.5); font-size:.72rem; margin-bottom:.4rem;">
-        <i class="bi bi-person-circle me-1" style="color:#34d399"></i>
-        Member: <strong style="color:rgba(255,255,255,.8)">{{ session.get('member_name','') }}</strong>
-      </div>
+    <div style="display:flex;gap:.75rem;">
+      <a href="{{ url_for('change_credentials') }}"
+         style="font-size:.73rem;color:rgba(255,255,255,.5);text-decoration:none;">
+        <i class="bi bi-key-fill me-1"></i>Credentials
+      </a>
+      <span style="color:rgba(255,255,255,.2)">|</span>
       <a href="{{ url_for('logout') }}"
-         style="font-size:.75rem; color:#fca5a5; text-decoration:none;"
-         title="Log out">
+         style="font-size:.73rem;color:#fca5a5;text-decoration:none;">
         <i class="bi bi-box-arrow-right me-1"></i>Logout
       </a>
     </div>
+    {% elif session.get('member_logged_in') %}
+    <div style="color:rgba(255,255,255,.45);font-size:.7rem;margin-bottom:.5rem;">
+      <i class="bi bi-person-circle me-1" style="color:#34d399"></i>
+      Member: <strong style="color:rgba(255,255,255,.8)">{{ session.get('member_name','') }}</strong>
+    </div>
+    <a href="{{ url_for('logout') }}"
+       style="font-size:.73rem;color:#fca5a5;text-decoration:none;">
+      <i class="bi bi-box-arrow-right me-1"></i>Logout
+    </a>
     {% endif %}
-    <small style="color:rgba(255,255,255,.25); font-size:.68rem;">
-      Track · Analyse · Save 🚀
-    </small>
+    <div style="margin-top:.6rem;">
+      <small style="color:rgba(255,255,255,.2);font-size:.65rem;">Track · Analyse · Save 🚀</small>
+    </div>
   </div>
 </aside>
+{% endif %}
 
-<!-- ── Main Content ── -->
-<main class="main-content">
-  {% with messages = get_flashed_messages(with_categories=true) %}
-    {% if messages %}
-      {% for cat, msg in messages %}
-        <div class="alert alert-{{ cat }} alert-dismissible fade show" role="alert">
-          {{ msg }}
-          <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        </div>
-      {% endfor %}
+{# ── Single main wrapper — class switches desktop vs mobile ── #}
+<main class="{{ 'main-desktop' if not mobile_ui else 'main-mobile' }}">
+
+  {# Mobile top bar #}
+  {% if mobile_ui %}
+  <div class="mobile-topbar">
+    <span class="brand">💰 Family Expenses</span>
+    {% if session.get('admin_logged_in') %}
+    <span class="user-pill">
+      <i class="bi bi-shield-fill-check" style="color:#a78bfa"></i>
+      {{ session.get('admin_username','admin') }}
+      &nbsp;·&nbsp;
+      <a href="{{ url_for('logout') }}" style="color:#fca5a5;text-decoration:none;">Logout</a>
+    </span>
+    {% elif session.get('member_logged_in') %}
+    <span class="user-pill">
+      <i class="bi bi-person-circle" style="color:#34d399"></i>
+      {{ session.get('member_name','') }}
+      &nbsp;·&nbsp;
+      <a href="{{ url_for('logout') }}" style="color:#fca5a5;text-decoration:none;">Logout</a>
+    </span>
     {% endif %}
+  </div>
+  <div class="mobile-page-body">
+  {% endif %}
+
+  {# Flash messages #}
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}{% for cat, msg in messages %}
+      <div class="alert alert-{{ cat }} alert-dismissible fade show" role="alert">
+        {{ msg }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+      </div>
+    {% endfor %}{% endif %}
   {% endwith %}
 
+  {# ── PAGE CONTENT — defined exactly once ── #}
   {% block content %}{% endblock %}
+
+  {% if mobile_ui %}</div>{% endif %}
+
 </main>
 
+{# ── Mobile bottom nav (only on mexpensemanager.mydailybot.com) ── #}
+{% if mobile_ui %}
+<nav class="bottom-nav" role="navigation" aria-label="Mobile navigation">
+  <a href="{{ url_for('index') }}"
+     class="{% if request.endpoint == 'index' %}active{% endif %}">
+    <span class="bn-icon">📊</span><span>Dashboard</span>
+  </a>
+  <a href="{{ url_for('add') }}"
+     class="{% if request.endpoint == 'add' %}active{% endif %}">
+    <span class="bn-icon">➕</span><span>Add</span>
+  </a>
+  <a href="{{ url_for('expenses') }}"
+     class="{% if request.endpoint == 'expenses' %}active{% endif %}">
+    <span class="bn-icon">📋</span><span>Expenses</span>
+  </a>
+  <a href="{{ url_for('summary') }}"
+     class="{% if request.endpoint == 'summary' %}active{% endif %}">
+    <span class="bn-icon">📈</span><span>Summary</span>
+  </a>
+  <a href="{{ url_for('investments') }}"
+     class="{% if request.endpoint in ['investments','investment_history'] %}active{% endif %}">
+    <span class="bn-icon">💹</span><span>Invest</span>
+  </a>
+</nav>
+{% endif %}
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
-
-<!-- Category colour helper (shared across pages) -->
 <script src="{{ url_for('static', filename='js/app.js') }}"></script>
-
 {% block scripts %}{% endblock %}
+
+{% if mobile_ui %}
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('/sw.js')
+        .then(function(r) { console.log('[SW] scope:', r.scope); })
+        .catch(function(e) { console.warn('[SW] failed:', e); });
+    });
+  }
+</script>
+{% endif %}
+
 </body>
 </html>

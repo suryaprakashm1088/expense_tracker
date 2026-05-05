@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>
+    {% if step == 'request' %}WhatsApp OTP Login
+    {% elif step == 'verify' %}Enter OTP Code
+    {% else %}Set Your Password
+    {% endif %}
+    — Expense Tracker
+  </title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; font-family: 'Inter', sans-serif; }
+
+    body {
+      min-height: 100vh;
+      background: linear-gradient(135deg, #0f0c29 0%, #1e1b4b 40%, #0f4c3a 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1.25rem;
+      position: relative;
+      overflow: hidden;
+    }
+    body::before, body::after {
+      content: '';
+      position: fixed;
+      border-radius: 50%;
+      filter: blur(80px);
+      opacity: .3;
+      pointer-events: none;
+    }
+    body::before {
+      width: 450px; height: 450px;
+      background: radial-gradient(circle, #0d9488, transparent);
+      top: -100px; right: -100px;
+      animation: orb1 9s ease-in-out infinite;
+    }
+    body::after {
+      width: 350px; height: 350px;
+      background: radial-gradient(circle, #25D366, transparent);
+      bottom: -80px; left: -80px;
+      animation: orb2 11s ease-in-out infinite;
+    }
+    @keyframes orb1 { 0%,100%{transform:translate(0,0)} 50%{transform:translate(-25px,25px)} }
+    @keyframes orb2 { 0%,100%{transform:translate(0,0)} 50%{transform:translate(25px,-20px)} }
+
+    /* ── Card ── */
+    .otp-card {
+      background: rgba(255,255,255,.97);
+      border-radius: 24px;
+      box-shadow: 0 25px 80px rgba(0,0,0,.4), 0 0 0 1px rgba(255,255,255,.08);
+      width: 100%;
+      max-width: 440px;
+      overflow: hidden;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* ── Header ── */
+    .otp-header {
+      background: linear-gradient(135deg, #064e3b 0%, #0d9488 50%, #14b8a6 100%);
+      padding: 2rem 2rem 1.75rem;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .otp-header::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23ffffff' fill-opacity='0.04'%3E%3Ccircle cx='30' cy='30' r='20'/%3E%3C/g%3E%3C/svg%3E");
+    }
+    .otp-header .step-icon {
+      font-size: 2.8rem;
+      display: block;
+      margin-bottom: .5rem;
+      filter: drop-shadow(0 4px 8px rgba(0,0,0,.2));
+      position: relative;
+    }
+    .otp-header h4 {
+      color: #fff;
+      font-weight: 800;
+      margin: 0 0 .25rem;
+      font-size: 1.2rem;
+      letter-spacing: -.2px;
+      position: relative;
+    }
+    .otp-header p {
+      color: rgba(255,255,255,.72);
+      font-size: .8rem;
+      margin: 0;
+      position: relative;
+    }
+
+    /* ── Step progress ── */
+    .step-progress {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0;
+      padding: 1.25rem 2rem .25rem;
+    }
+    .step-node {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: .35rem;
+    }
+    .step-circle {
+      width: 32px; height: 32px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: .78rem;
+      font-weight: 700;
+      transition: all .3s;
+    }
+    .step-circle.done     { background: #10b981; color: #fff; }
+    .step-circle.active   { background: #0d9488; color: #fff; box-shadow: 0 0 0 3px rgba(13,148,136,.2); }
+    .step-circle.inactive { background: #e5e7eb; color: #9ca3af; }
+    .step-label {
+      font-size: .68rem;
+      font-weight: 600;
+      color: #9ca3af;
+      white-space: nowrap;
+    }
+    .step-label.active { color: #0d9488; }
+    .step-label.done   { color: #10b981; }
+    .step-connector {
+      width: 48px; height: 2px;
+      margin: 0 .25rem;
+      margin-bottom: 1.1rem;
+      background: #e5e7eb;
+      transition: background .3s;
+    }
+    .step-connector.done { background: #10b981; }
+
+    /* ── Body ── */
+    .otp-body { padding: 1.5rem 2rem 2rem; }
+
+    /* ── Alerts ── */
+    .alert-danger {
+      border-radius: 12px;
+      font-size: .84rem;
+      border: none;
+      background: #fef2f2;
+      color: #991b1b;
+      border-left: 4px solid #ef4444;
+      padding: .75rem 1rem;
+      margin-bottom: 1.25rem;
+      display: flex;
+      align-items: flex-start;
+      gap: .5rem;
+    }
+    .alert { border-radius: 12px; font-size: .84rem; margin-bottom: 1.25rem; }
+
+    /* ── Hint box ── */
+    .hint-box {
+      background: linear-gradient(135deg, #f0fdfa, #ccfbf1);
+      border: 1px solid #99f6e4;
+      border-radius: 12px;
+      padding: .85rem 1rem;
+      font-size: .82rem;
+      color: #0f766e;
+      margin-bottom: 1.5rem;
+      display: flex;
+      align-items: flex-start;
+      gap: .5rem;
+      line-height: 1.55;
+    }
+    .hint-box i { flex-shrink: 0; font-size: .95rem; margin-top: .05rem; }
+
+    /* ── Labels ── */
+    .form-label {
+      font-weight: 600;
+      font-size: .82rem;
+      color: #374151;
+      margin-bottom: .4rem;
+      display: flex;
+      align-items: center;
+      gap: .35rem;
+    }
+    .form-label i { color: #0d9488; }
+
+    /* ── Inputs ── */
+    .form-control {
+      border-radius: 12px;
+      padding: .7rem 1rem;
+      border: 1.5px solid #e5e7eb;
+      font-size: .9rem;
+      color: #111827;
+      background: #fafafa;
+      transition: border-color .2s, box-shadow .2s, background .2s;
+    }
+    .form-control:focus {
+      border-color: #0d9488;
+      box-shadow: 0 0 0 3px rgba(13,148,136,.12);
+      background: #fff;
+      outline: none;
+    }
+    .form-control::placeholder { color: #9ca3af; font-size: .85rem; }
+
+    /* ── OTP input ── */
+    .otp-input {
+      letter-spacing: .6rem;
+      font-size: 1.6rem;
+      font-weight: 700;
+      text-align: center;
+      font-family: 'Courier New', monospace;
+      padding: .8rem 1rem;
+    }
+
+    /* ── Password group ── */
+    .input-group .form-control {
+      border-right: none;
+      border-radius: 12px 0 0 12px;
+    }
+    .input-group .btn-eye {
+      border: 1.5px solid #e5e7eb;
+      border-left: none;
+      border-radius: 0 12px 12px 0;
+      background: #fafafa;
+      color: #9ca3af;
+      padding: 0 .85rem;
+      transition: color .2s, background .2s;
+    }
+    .input-group .btn-eye:hover { color: #0d9488; background: #f0fdfa; }
+    .input-group:focus-within .btn-eye { border-color: #0d9488; }
+
+    /* ── Strength bar ── */
+    .strength-wrap { margin-top: .4rem; }
+    .strength-bar {
+      height: 5px;
+      border-radius: 3px;
+      background: #e5e7eb;
+      overflow: hidden;
+    }
+    .strength-bar .fill {
+      height: 100%;
+      border-radius: 3px;
+      width: 0;
+      transition: width .35s, background .35s;
+    }
+    .strength-text {
+      font-size: .73rem;
+      font-weight: 600;
+      margin-top: .25rem;
+      display: block;
+    }
+
+    /* ── Submit button ── */
+    .btn-otp {
+      background: linear-gradient(135deg, #0d9488, #14b8a6);
+      color: #fff;
+      border: none;
+      border-radius: 12px;
+      padding: .75rem;
+      font-weight: 700;
+      font-size: .95rem;
+      width: 100%;
+      letter-spacing: .01em;
+      box-shadow: 0 4px 15px rgba(13,148,136,.3);
+      transition: opacity .2s, transform .1s, box-shadow .2s;
+      cursor: pointer;
+    }
+    .btn-otp:hover {
+      opacity: .92;
+      color: #fff;
+      transform: translateY(-1px);
+      box-shadow: 0 6px 20px rgba(13,148,136,.4);
+    }
+    .btn-otp:active { transform: translateY(0); }
+
+    /* ── Back / resend links ── */
+    .link-muted {
+      display: block;
+      text-align: center;
+      font-size: .8rem;
+      color: #6b7280;
+      margin-top: .9rem;
+      text-decoration: none;
+      transition: color .2s;
+    }
+    .link-muted:hover { color: #0d9488; }
+    .link-muted i { margin-right: .25rem; }
+  </style>
+</head>
+<body>
+
+<div class="otp-card">
+
+  <!-- ── Header ── -->
+  <div class="otp-header">
+    {% if step == 'request' %}
+      <span class="step-icon">📱</span>
+      <h4>Login with WhatsApp OTP</h4>
+      <p>We'll send a one-time code to your WhatsApp</p>
+    {% elif step == 'verify' %}
+      <span class="step-icon">🔐</span>
+      <h4>Enter Your OTP</h4>
+      <p>Check your WhatsApp for the 6-digit code</p>
+    {% else %}
+      <span class="step-icon">🔑</span>
+      <h4>Set Your Password</h4>
+      <p>Choose a password to log in next time</p>
+    {% endif %}
+  </div>
+
+  <!-- ── Step progress ── -->
+  <div class="step-progress">
+    <div class="step-node">
+      <div class="step-circle {{ 'done' if step in ('verify','set_password') else 'active' }}">
+        {% if step in ('verify','set_password') %}<i class="bi bi-check-lg"></i>{% else %}1{% endif %}
+      </div>
+      <span class="step-label {{ 'done' if step in ('verify','set_password') else 'active' }}">Phone</span>
+    </div>
+    <div class="step-connector {{ 'done' if step in ('verify','set_password') }}"></div>
+    <div class="step-node">
+      <div class="step-circle {{ 'done' if step == 'set_password' else ('active' if step == 'verify' else 'inactive') }}">
+        {% if step == 'set_password' %}<i class="bi bi-check-lg"></i>{% else %}2{% endif %}
+      </div>
+      <span class="step-label {{ 'done' if step == 'set_password' else ('active' if step == 'verify' else '') }}">Verify OTP</span>
+    </div>
+    <div class="step-connector {{ 'done' if step == 'set_password' }}"></div>
+    <div class="step-node">
+      <div class="step-circle {{ 'active' if step == 'set_password' else 'inactive' }}">3</div>
+      <span class="step-label {{ 'active' if step == 'set_password' else '' }}">Password</span>
+    </div>
+  </div>
+
+  <!-- ── Body ── -->
+  <div class="otp-body">
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for cat, msg in messages %}
+          <div class="alert alert-{{ cat }} py-2">{{ msg }}</div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    {% if error %}
+    <div class="alert-danger">
+      <i class="bi bi-exclamation-triangle-fill flex-shrink-0 mt-1"></i>
+      <span>{{ error }}</span>
+    </div>
+    {% endif %}
+
+    {# ── Step 1: Enter WhatsApp number ── #}
+    {% if step == 'request' %}
+
+    <div class="hint-box">
+      <i class="bi bi-info-circle-fill"></i>
+      <span>Enter the WhatsApp number registered with your account. We'll send a <strong>6-digit code</strong> valid for 10 minutes.</span>
+    </div>
+
+    <form method="POST" action="{{ url_for('member_request_otp') }}">
+      <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+      <div class="mb-4">
+        <label class="form-label" for="whatsapp_number">
+          <i class="bi bi-whatsapp" style="color:#25D366"></i> WhatsApp Number
+        </label>
+        <input
+          type="tel"
+          id="whatsapp_number"
+          name="whatsapp_number"
+          class="form-control"
+          placeholder="+65 9123 4567"
+          autocomplete="tel"
+          required
+          autofocus
+        >
+        <div class="form-text mt-1" style="font-size:.76rem;color:#6b7280;">
+          Include country code, e.g. <strong>+65</strong> for Singapore
+        </div>
+      </div>
+      <button type="submit" class="btn-otp">
+        <i class="bi bi-send-fill me-2"></i>Send OTP via WhatsApp
+      </button>
+    </form>
+
+    {# ── Step 2: Enter OTP ── #}
+    {% elif step == 'verify' %}
+
+    <div class="hint-box">
+      <i class="bi bi-whatsapp" style="color:#25D366"></i>
+      <span>A 6-digit code has been sent to your WhatsApp. Enter it below — it expires in <strong>10 minutes</strong>.</span>
+    </div>
+
+    <form method="POST" action="{{ url_for('member_verify_otp') }}">
+      <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+      <div class="mb-4">
+        <label class="form-label d-block text-center" for="otp">Enter 6-digit OTP</label>
+        <input
+          type="text"
+          id="otp"
+          name="otp"
+          class="form-control otp-input"
+          placeholder="· · · · · ·"
+          maxlength="6"
+          pattern="\d{6}"
+          inputmode="numeric"
+          autocomplete="one-time-code"
+          required
+          autofocus
+        >
+      </div>
+      <button type="submit" class="btn-otp">
+        <i class="bi bi-check2-circle me-2"></i>Verify Code
+      </button>
+    </form>
+    <a href="{{ url_for('member_request_otp') }}" class="link-muted">
+      <i class="bi bi-arrow-counterclockwise"></i>Didn't receive a code? Request a new one
+    </a>
+
+    {# ── Step 3: Set password ── #}
+    {% elif step == 'set_password' %}
+
+    <div class="hint-box">
+      <i class="bi bi-shield-lock-fill"></i>
+      <span>
+        Welcome, <strong>{{ (member.nickname or member.name) if member else 'there' }}</strong>!
+        Set a password to log in with your WhatsApp number next time.
+      </span>
+    </div>
+
+    <form method="POST" action="{{ url_for('member_set_password') }}">
+      <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+      <div class="mb-3">
+        <label class="form-label" for="new_password">
+          <i class="bi bi-lock-fill"></i> New Password
+          <span style="font-weight:400;color:#9ca3af;font-size:.78rem;">— min 8 chars</span>
+        </label>
+        <div class="input-group">
+          <input
+            type="password"
+            id="new_password"
+            name="new_password"
+            class="form-control"
+            placeholder="Choose a strong password"
+            minlength="8"
+            required
+            autofocus
+            oninput="checkStrength(this.value)"
+          >
+          <button class="btn-eye" type="button" onclick="togglePwd('new_password','eye1')" tabindex="-1">
+            <i class="bi bi-eye" id="eye1"></i>
+          </button>
+        </div>
+        <div class="strength-wrap">
+          <div class="strength-bar"><div class="fill" id="strength-fill"></div></div>
+          <span class="strength-text" id="strength-text"></span>
+        </div>
+      </div>
+
+      <div class="mb-4">
+        <label class="form-label" for="confirm_password">
+          <i class="bi bi-lock-fill"></i> Confirm Password
+        </label>
+        <div class="input-group">
+          <input
+            type="password"
+            id="confirm_password"
+            name="confirm_password"
+            class="form-control"
+            placeholder="Repeat your password"
+            minlength="8"
+            required
+          >
+          <button class="btn-eye" type="button" onclick="togglePwd('confirm_password','eye2')" tabindex="-1">
+            <i class="bi bi-eye" id="eye2"></i>
+          </button>
+        </div>
+      </div>
+
+      <button type="submit" class="btn-otp">
+        <i class="bi bi-box-arrow-in-right me-2"></i>Set Password &amp; Log In
+      </button>
+    </form>
+    {% endif %}
+
+    <a href="{{ url_for('login') }}" class="link-muted mt-3">
+      <i class="bi bi-arrow-left"></i>Back to login
+    </a>
+
+  </div><!-- /otp-body -->
+</div><!-- /otp-card -->
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+function togglePwd(inputId, iconId) {
+  const inp = document.getElementById(inputId);
+  const ico = document.getElementById(iconId);
+  inp.type = inp.type === 'password' ? 'text' : 'password';
+  ico.classList.toggle('bi-eye');
+  ico.classList.toggle('bi-eye-slash');
+}
+
+function checkStrength(val) {
+  const fill = document.getElementById('strength-fill');
+  const text = document.getElementById('strength-text');
+  if (!fill) return;
+  let score = 0;
+  if (val.length >= 8)           score++;
+  if (val.length >= 12)          score++;
+  if (/[A-Z]/.test(val))         score++;
+  if (/[0-9]/.test(val))         score++;
+  if (/[^A-Za-z0-9]/.test(val))  score++;
+  const levels = [
+    { pct:'20%', color:'#ef4444', label:'Very weak' },
+    { pct:'40%', color:'#f59e0b', label:'Weak' },
+    { pct:'60%', color:'#eab308', label:'Fair' },
+    { pct:'80%', color:'#22c55e', label:'Strong' },
+    { pct:'100%',color:'#10b981', label:'Very strong ✓' },
+  ];
+  const lvl = levels[Math.min(score - 1, 4)] || levels[0];
+  fill.style.width      = val.length ? lvl.pct : '0%';
+  fill.style.background = lvl.color;
+  text.textContent      = val.length ? lvl.label : '';
+  text.style.color      = lvl.color;
+}
+
+const otpInput = document.getElementById('otp');
+if (otpInput) {
+  otpInput.addEventListener('input', () => {
+    otpInput.value = otpInput.value.replace(/\D/g, '').slice(0, 6);
+  });
+}
+</script>
+</body>
+</html>

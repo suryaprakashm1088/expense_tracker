@@ -5,9 +5,22 @@ extensions.py — Flask app factory, CSRF, security headers, login middleware,
 Import `app`, `login_required`, `admin_required` from here in all route modules.
 
 Dependency order: config → database → extensions → services/* → routes/*
+
+Mobile layout detection:
+  Requests arriving at m.<anything> (e.g. m.expensemanager.mydailybot.com) get
+  mobile_ui=True injected into every template, which switches base.html to the
+  bottom-nav PWA layout. All other hosts get the desktop sidebar layout.
+  No JS detection, no UA sniffing — pure server-side, immune to caching.
 """
+import os
 import secrets
 from functools import wraps
+
+# Exact hostname for the mobile/PWA subdomain.
+# Set MOBILE_HOST in your .env file to whichever subdomain you add in Cloudflare.
+# Example: MOBILE_HOST=mexpenses.mydailybot.com
+# Leave blank to disable mobile layout (desktop-only mode).
+_MOBILE_HOST = os.environ.get('MOBILE_HOST', '').strip().lower()
 
 from flask import Flask, session, abort, request, redirect, url_for, flash
 import database as db
@@ -59,8 +72,9 @@ def csrf_protect():
 # ── Context processor — pending_count badge ──────────────────────────────────
 
 @app.context_processor
-def inject_pending_count():
-    """Make pending_count available in every template for the sidebar badge."""
+def inject_globals():
+    """Inject pending_count and mobile_ui into every template."""
+    # ── Pending member badge ──────────────────────────────────────────────────
     if session.get('admin_logged_in'):
         try:
             count = len(db.get_pending_members())
@@ -68,7 +82,13 @@ def inject_pending_count():
             count = 0
     else:
         count = 0
-    return {"pending_count": count}
+
+    # ── Mobile layout detection — exact hostname match, 100% server-side ────
+    # Strip port (e.g. "localhost:5001" → "localhost") before comparing.
+    host = request.host.split(':')[0].lower()
+    mobile_ui = bool(_MOBILE_HOST) and (host == _MOBILE_HOST)
+
+    return {"pending_count": count, "mobile_ui": mobile_ui}
 
 
 # ── Login / access-control middleware ─────────────────────────────────────────
@@ -110,6 +130,10 @@ def set_security_headers(response):
         "connect-src 'self';"
     )
     response.headers['Content-Security-Policy'] = csp
+    # Prevent browser caching of auth-gated HTML pages
+    if 'text/html' in response.headers.get('Content-Type', ''):
+        response.headers['Cache-Control'] = 'no-store, must-revalidate'
+        response.headers['Pragma'] = 'no-cache'
     return response
 
 

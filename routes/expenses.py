@@ -8,6 +8,7 @@ Routes registered:
   GET/POST    /edit/<id>
   POST        /delete/<id>
   GET         /receipts
+  GET         /sw.js        — Service Worker (must be at root scope for PWA)
 """
 import json
 from datetime import datetime
@@ -234,3 +235,18 @@ def delete(expense_id):
 def receipts():
     receipts_list = db.get_receipts_summary()
     return render_template("receipts.html", receipts=receipts_list)
+
+
+# ── PWA Service Worker ────────────────────────────────────────────────────────
+# Must be served from /sw.js (not /static/sw.js) so it gets scope over the
+# entire app. No login required — listed in PUBLIC_ENDPOINTS in config.py.
+@app.route("/sw.js")
+def service_worker():
+    from flask import send_from_directory
+    import os
+    resp = send_from_directory(
+        os.path.join(app.root_path, "static"), "sw.js"
+    )
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Content-Type"]  = "application/javascript"
+    return resp

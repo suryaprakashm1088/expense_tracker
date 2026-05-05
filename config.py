@@ -160,7 +160,12 @@ SG_CC_BANKS = {
 CC_TOKENS = {"cc", "credit", "card", "creditcard", "bill", "payment", "pay"}
 
 # ── Endpoint access-control sets ──────────────────────────────────────────────
-PUBLIC_ENDPOINTS = {'login', 'logout', 'whatsapp_webhook', 'static', 'health', 'serve_temp_image', 'metrics', 'prometheus_metrics'}
+PUBLIC_ENDPOINTS = {
+    'login', 'logout', 'whatsapp_webhook', 'static', 'health',
+    'serve_temp_image', 'metrics', 'prometheus_metrics', 'service_worker',
+    # Member self-service OTP flow (no login required)
+    'member_request_otp', 'member_verify_otp', 'member_set_password',
+}
 
 MEMBER_ALLOWED = {
     'index', 'expenses', 'add_expense', 'edit_expense',
@@ -179,6 +184,7 @@ MEMBER_ALLOWED = {
 ADMIN_ONLY = {
     'members', 'approve_member', 'delete_member', 'toggle_admin',
     'set_member_password_route', 'revoke_member_login_route',
+    'toggle_member_login', 'send_member_otp',
     'categories', 'add_category', 'edit_category', 'delete_category',
     'shop_mappings', 'add_shop_mapping', 'delete_shop_mapping',
     'invite', 'unknown_contacts', 'change_credentials',

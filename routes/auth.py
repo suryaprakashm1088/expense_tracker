@@ -1,11 +1,18 @@
 """
-routes/auth.py — Login, logout, and change-credentials pages.
+routes/auth.py — Login, logout, change-credentials, and member OTP self-service.
 
 Routes registered:
   GET/POST  /login
   GET       /logout
   GET/POST  /change-credentials
+  GET/POST  /member/request-otp    — member requests a WhatsApp OTP (public)
+  GET/POST  /member/verify-otp     — member verifies OTP (public)
+  GET/POST  /member/set-password   — member sets own password after OTP verify (public)
 """
+import secrets
+import string
+from datetime import datetime, timedelta
+
 from flask import render_template, request, redirect, url_for, flash, session
 from werkzeug.security import generate_password_hash, check_password_hash
 
@@ -99,3 +106,167 @@ def change_credentials():
             return redirect(url_for('index'))
 
     return render_template("change_credentials.html")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Member self-service: WhatsApp OTP → set own password
+# All three routes are PUBLIC (no login required) — listed in PUBLIC_ENDPOINTS.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _generate_otp(length=6):
+    """Return a random numeric OTP string."""
+    return "".join(secrets.choice(string.digits) for _ in range(length))
+
+
+def _send_otp_whatsapp(member, otp):
+    """Send OTP to the member's WhatsApp number. Returns True on success."""
+    from config import TWILIO_NUMBER
+    from services.ai_clients import get_twilio_client
+    twilio_cl = get_twilio_client()
+    if not twilio_cl or not TWILIO_NUMBER:
+        return False
+    try:
+        twilio_cl.messages.create(
+            from_=TWILIO_NUMBER,
+            to=member["whatsapp_number"],
+            body=(
+                f"🔐 Your Expense Tracker login code is: *{otp}*\n\n"
+                f"Enter this code on the login page to set your password.\n"
+                f"Valid for *10 minutes*. Do not share this code."
+            ),
+        )
+        return True
+    except Exception:
+        return False
+
+
+@app.route("/member/request-otp", methods=["GET", "POST"])
+def member_request_otp():
+    """Step 1 — member enters their WhatsApp number to receive an OTP."""
+    from extensions import _is_logged_in
+    if _is_logged_in():
+        return redirect(url_for("index"))
+
+    error = None
+    if request.method == "POST":
+        raw_number = request.form.get("whatsapp_number", "").strip()
+        # Normalise: strip spaces/dashes, ensure it starts with +
+        digits = "".join(c for c in raw_number if c.isdigit() or c == "+")
+        if not digits.startswith("+"):
+            digits = "+" + digits
+
+        member = db.get_approved_member_by_number(digits)
+        if not member:
+            error = "No approved member found with that WhatsApp number. Contact your admin."
+        else:
+            otp      = _generate_otp()
+            otp_hash = generate_password_hash(otp)
+            expires  = (datetime.now() + timedelta(minutes=10)).isoformat()
+            db.set_member_otp(member["id"], otp_hash, expires)
+
+            sent = _send_otp_whatsapp(member, otp)
+            if sent:
+                # Store member id in session so verify step knows who to check
+                session["otp_pending_member_id"] = member["id"]
+                flash(
+                    f"✅ OTP sent to {digits} via WhatsApp. "
+                    "Check your messages and enter the code below.",
+                    "success",
+                )
+                return redirect(url_for("member_verify_otp"))
+            else:
+                # Twilio not configured — show OTP on screen (dev/local mode only)
+                session["otp_pending_member_id"] = member["id"]
+                flash(
+                    f"⚠️ WhatsApp not configured — your OTP is: {otp} "
+                    "(visible because Twilio is not set up)",
+                    "warning",
+                )
+                return redirect(url_for("member_verify_otp"))
+
+    return render_template("member_otp.html", step="request", error=error)
+
+
+@app.route("/member/verify-otp", methods=["GET", "POST"])
+def member_verify_otp():
+    """Step 2 — member enters the OTP they received."""
+    from extensions import _is_logged_in
+    if _is_logged_in():
+        return redirect(url_for("index"))
+
+    member_id = session.get("otp_pending_member_id")
+    if not member_id:
+        flash("Session expired. Please request a new OTP.", "warning")
+        return redirect(url_for("member_request_otp"))
+
+    error = None
+    if request.method == "POST":
+        otp_entered = request.form.get("otp", "").strip()
+        member = db.get_member_by_id(member_id)
+        if not member:
+            flash("Member not found.", "danger")
+            return redirect(url_for("member_request_otp"))
+
+        otp_hash    = member.get("login_otp_hash")
+        otp_expires = member.get("login_otp_expires_at")
+
+        if not otp_hash or not otp_expires:
+            error = "No OTP found. Please request a new one."
+        elif datetime.fromisoformat(otp_expires) < datetime.now():
+            db.clear_member_otp(member_id)
+            error = "OTP has expired (10 minutes). Please request a new one."
+        elif not check_password_hash(otp_hash, otp_entered):
+            error = "Incorrect OTP. Check your WhatsApp message and try again."
+        else:
+            # OTP correct — mark verified, clear OTP, send to set-password
+            db.clear_member_otp(member_id)
+            session.pop("otp_pending_member_id", None)
+            session["otp_verified_member_id"] = member_id
+            flash("✅ OTP verified! Now set your password.", "success")
+            return redirect(url_for("member_set_password"))
+
+    return render_template("member_otp.html", step="verify", error=error)
+
+
+@app.route("/member/set-password", methods=["GET", "POST"])
+def member_set_password():
+    """Step 3 — member sets their own web-login password after OTP verification."""
+    from extensions import _is_logged_in
+    if _is_logged_in():
+        return redirect(url_for("index"))
+
+    member_id = session.get("otp_verified_member_id")
+    if not member_id:
+        flash("Session expired. Please start again.", "warning")
+        return redirect(url_for("member_request_otp"))
+
+    member = db.get_member_by_id(member_id)
+    if not member:
+        flash("Member not found.", "danger")
+        return redirect(url_for("member_request_otp"))
+
+    error = None
+    if request.method == "POST":
+        new_password     = request.form.get("new_password", "")
+        confirm_password = request.form.get("confirm_password", "")
+
+        if len(new_password) < 8:
+            error = "Password must be at least 8 characters."
+        elif new_password != confirm_password:
+            error = "Passwords do not match."
+        else:
+            db.set_member_password(member_id, generate_password_hash(new_password))
+            session.pop("otp_verified_member_id", None)
+            # Log them straight in
+            session["member_logged_in"] = True
+            session["member_id"]        = member_id
+            session["member_name"]      = member.get("nickname") or member.get("name", "")
+            flash(
+                "🎉 Password set! You're now logged in. "
+                "Use your WhatsApp number to log in next time.",
+                "success",
+            )
+            return redirect(url_for("index"))
+
+    return render_template("member_otp.html", step="set_password",
+                           member=member, error=error)

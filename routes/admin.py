@@ -15,6 +15,8 @@ Routes registered:
   POST        /members/toggle-admin/<id>
   POST        /members/set-password/<id>
   POST        /members/revoke-login/<id>
+  POST        /members/toggle-login/<id>   — enable/disable web login (keeps password)
+  POST        /members/send-otp/<id>       — admin sends WhatsApp OTP so member can set own password
   GET/POST    /onboarding
   POST        /onboarding/revoke/<code>
   GET/POST    /shop-mappings
@@ -188,9 +190,79 @@ def set_member_password_route(member_id):
 @login_required
 @app.route("/members/revoke-login/<int:member_id>", methods=["POST"])
 def revoke_member_login_route(member_id):
-    """Admin revokes web-login access for a member."""
+    """Admin revokes web-login access and wipes the password for a member."""
     db.revoke_member_login(member_id)
     flash("Web login access removed for this member.", "info")
+    return redirect(url_for("members"))
+
+
+@admin_required
+@login_required
+@app.route("/members/toggle-login/<int:member_id>", methods=["POST"])
+def toggle_member_login(member_id):
+    """Toggle can_login on/off for a member (keeps their password hash intact)."""
+    m = db.get_member_by_id(member_id)
+    if m:
+        db.toggle_member_web_login(member_id)
+        state = "disabled" if m.get("can_login") else "enabled"
+        name  = m.get("nickname") or m.get("name", "Member")
+        flash(f"Web login {state} for {name}.", "info")
+    return redirect(url_for("members"))
+
+
+@admin_required
+@login_required
+@app.route("/members/send-otp/<int:member_id>", methods=["POST"])
+def send_member_otp(member_id):
+    """Admin sends a WhatsApp OTP to the member so they can set their own password."""
+    import secrets, string
+    from datetime import datetime, timedelta
+    from werkzeug.security import generate_password_hash as gph
+    from config import TWILIO_NUMBER
+    from services.ai_clients import get_twilio_client
+
+    m = db.get_member_by_id(member_id)
+    if not m:
+        flash("Member not found.", "danger")
+        return redirect(url_for("members"))
+
+    otp      = "".join(secrets.choice(string.digits) for _ in range(6))
+    otp_hash = gph(otp)
+    expires  = (datetime.now() + timedelta(minutes=10)).isoformat()
+    db.set_member_otp(member_id, otp_hash, expires)
+
+    # Ensure web login is enabled so the member can actually use it
+    if not m.get("can_login"):
+        db.toggle_member_web_login(member_id)
+
+    twilio_cl = get_twilio_client()
+    name      = m.get("nickname") or m.get("name", "Member")
+    sent      = False
+    if twilio_cl and TWILIO_NUMBER and m.get("whatsapp_number"):
+        try:
+            twilio_cl.messages.create(
+                from_=TWILIO_NUMBER,
+                to=m["whatsapp_number"],
+                body=(
+                    f"👋 Hi {name}! Your admin has set up web login for you.\n\n"
+                    f"🔐 Your one-time login code is: *{otp}*\n\n"
+                    f"Go to {DASHBOARD_URL}/member/request-otp — enter your WhatsApp number, "
+                    f"then enter this code to set your own password.\n"
+                    f"Valid for *10 minutes*."
+                ),
+            )
+            sent = True
+        except Exception as exc:
+            app.logger.warning("send_member_otp: Twilio error: %s", exc)
+
+    if sent:
+        flash(f"✅ OTP sent to {name} via WhatsApp. They can now set their own password.", "success")
+    else:
+        flash(
+            f"⚠️ WhatsApp not configured — OTP for {name} is: {otp} "
+            "(share this manually; Twilio is not set up)",
+            "warning",
+        )
     return redirect(url_for("members"))
 
 

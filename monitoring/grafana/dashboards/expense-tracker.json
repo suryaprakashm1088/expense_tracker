@@ -164,8 +164,37 @@
     { "id": 30, "type": "row", "title": "📱 WhatsApp Bot", "gridPos": {"x":0,"y":37,"w":24,"h":1}, "collapsed": false },
 
     {
+      "id": 33, "type": "stat", "title": "WhatsApp Messages — All Time",
+      "gridPos": {"x":0,"y":38,"w":6,"h":4},
+      "datasource": "Prometheus",
+      "targets": [{"expr": "expense_tracker_whatsapp_messages_total_db", "legendFormat": "all time"}],
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background", "graphMode": "area"},
+      "fieldConfig": {"defaults": {"unit": "short", "color": {"mode": "fixed", "fixedColor": "green"},
+        "thresholds": {"steps": [{"value": 0, "color": "green"}]}}}
+    },
+
+    {
+      "id": 35, "type": "stat", "title": "WhatsApp Messages — Today",
+      "gridPos": {"x":6,"y":38,"w":6,"h":4},
+      "datasource": "Prometheus",
+      "targets": [{"expr": "expense_tracker_whatsapp_messages_today", "legendFormat": "today"}],
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background", "graphMode": "area"},
+      "fieldConfig": {"defaults": {"unit": "short", "color": {"mode": "fixed", "fixedColor": "blue"},
+        "thresholds": {"steps": [{"value": 0, "color": "blue"}]}}}
+    },
+
+    {
+      "id": 34, "type": "piechart", "title": "WhatsApp Messages by Type (24h)",
+      "gridPos": {"x":12,"y":38,"w":12,"h":4},
+      "datasource": "Prometheus",
+      "targets": [{"expr": "sum(increase(expense_tracker_whatsapp_message_total[24h])) by (message_type)", "legendFormat": "{{message_type}}"}],
+      "options": {"pieType": "donut", "tooltip": {"mode": "single"}, "legend": {"displayMode": "table", "placement": "right", "values": ["value", "percent"]}},
+      "fieldConfig": {"defaults": {"unit": "short"}}
+    },
+
+    {
       "id": 31, "type": "timeseries", "title": "WhatsApp Message Rate (by type)",
-      "gridPos": {"x":0,"y":38,"w":12,"h":8},
+      "gridPos": {"x":0,"y":42,"w":12,"h":8},
       "datasource": "Prometheus",
       "targets": [{"expr": "sum(rate(expense_tracker_whatsapp_message_total[5m])) by (message_type)", "legendFormat": "{{message_type}}"}],
       "fieldConfig": {"defaults": {"unit": "ops"}},
@@ -174,18 +203,18 @@
 
     {
       "id": 32, "type": "timeseries", "title": "WhatsApp Reply Time (P95)",
-      "gridPos": {"x":12,"y":38,"w":12,"h":8},
+      "gridPos": {"x":12,"y":42,"w":12,"h":8},
       "datasource": "Prometheus",
       "targets": [{"expr": "histogram_quantile(0.95, sum(rate(expense_tracker_whatsapp_reply_duration_seconds_bucket[5m])) by (le))", "legendFormat": "p95 reply time"}],
       "fieldConfig": {"defaults": {"unit": "s"}},
       "options": {"tooltip": {"mode": "multi"}}
     },
 
-    { "id": 40, "type": "row", "title": "🤖 AI Model Performance", "gridPos": {"x":0,"y":46,"w":24,"h":1}, "collapsed": false },
+    { "id": 40, "type": "row", "title": "🤖 AI Model Performance", "gridPos": {"x":0,"y":50,"w":24,"h":1}, "collapsed": false },
 
     {
       "id": 41, "type": "timeseries", "title": "AI Scan Duration P95 (by engine)",
-      "gridPos": {"x":0,"y":47,"w":12,"h":8},
+      "gridPos": {"x":0,"y":51,"w":12,"h":8},
       "datasource": "Prometheus",
       "targets": [{"expr": "histogram_quantile(0.95, sum(rate(expense_tracker_ai_scan_duration_seconds_bucket[10m])) by (le, engine))", "legendFormat": "p95 {{engine}}"}],
       "fieldConfig": {"defaults": {"unit": "s"}},
@@ -194,7 +223,7 @@
 
     {
       "id": 42, "type": "timeseries", "title": "AI Scan Success vs Failure",
-      "gridPos": {"x":12,"y":47,"w":8,"h":8},
+      "gridPos": {"x":12,"y":51,"w":8,"h":8},
       "datasource": "Prometheus",
       "targets": [
         {"expr": "sum(rate(expense_tracker_ai_scan_total{status=\"success\"}[5m])) by (engine)", "legendFormat": "✅ {{engine}}"},
@@ -206,7 +235,7 @@
 
     {
       "id": 43, "type": "gauge", "title": "AI Success Rate (1h)",
-      "gridPos": {"x":20,"y":47,"w":4,"h":8},
+      "gridPos": {"x":20,"y":51,"w":4,"h":8},
       "datasource": "Prometheus",
       "targets": [{"expr": "sum(rate(expense_tracker_ai_scan_total{status=\"success\"}[1h])) / (sum(rate(expense_tracker_ai_scan_total[1h])) > 0) or vector(1)", "legendFormat": "success rate"}],
       "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "minVizValue": 0, "maxVizValue": 1},
@@ -214,11 +243,11 @@
         "thresholds": {"steps": [{"value": 0, "color": "red"}, {"value": 0.8, "color": "yellow"}, {"value": 0.95, "color": "green"}]}}}
     },
 
-    { "id": 60, "type": "row", "title": "💾 DB Backup", "gridPos": {"x":0,"y":55,"w":24,"h":1}, "collapsed": false },
+    { "id": 60, "type": "row", "title": "💾 DB Backup", "gridPos": {"x":0,"y":59,"w":24,"h":1}, "collapsed": false },
 
     {
       "id": 61, "type": "stat", "title": "Last Backup",
-      "gridPos": {"x":0,"y":56,"w":6,"h":4},
+      "gridPos": {"x":0,"y":60,"w":6,"h":4},
       "datasource": "Prometheus",
       "targets": [{"expr": "expense_tracker_last_backup_age_seconds", "legendFormat": "age"}],
       "options": {
@@ -242,7 +271,7 @@
 
     {
       "id": 62, "type": "stat", "title": "Backups on Disk",
-      "gridPos": {"x":6,"y":56,"w":6,"h":4},
+      "gridPos": {"x":6,"y":60,"w":6,"h":4},
       "datasource": "Prometheus",
       "targets": [{"expr": "expense_tracker_backup_count / expense_tracker_backup_keep_days", "legendFormat": "fill"}],
       "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background"},
@@ -262,7 +291,7 @@
 
     {
       "id": 63, "type": "stat", "title": "Last Backup Size",
-      "gridPos": {"x":12,"y":56,"w":6,"h":4},
+      "gridPos": {"x":12,"y":60,"w":6,"h":4},
       "datasource": "Prometheus",
       "targets": [{"expr": "expense_tracker_last_backup_size_bytes", "legendFormat": "size"}],
       "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background"},
@@ -271,7 +300,7 @@
 
     {
       "id": 64, "type": "stat", "title": "Backup Retention (configured)",
-      "gridPos": {"x":18,"y":56,"w":6,"h":4},
+      "gridPos": {"x":18,"y":60,"w":6,"h":4},
       "datasource": "Prometheus",
       "targets": [{"expr": "expense_tracker_backup_keep_days", "legendFormat": "days"}],
       "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background"},
@@ -285,7 +314,7 @@
 
     {
       "id": 65, "type": "timeseries", "title": "Backup Size Over Time",
-      "gridPos": {"x":0,"y":60,"w":12,"h":6},
+      "gridPos": {"x":0,"y":64,"w":12,"h":6},
       "datasource": "Prometheus",
       "targets": [{"expr": "expense_tracker_last_backup_size_bytes", "legendFormat": "backup size"}],
       "fieldConfig": {"defaults": {"unit": "bytes"}},
@@ -294,7 +323,7 @@
 
     {
       "id": 66, "type": "timeseries", "title": "Backup Age Over Time",
-      "gridPos": {"x":12,"y":60,"w":12,"h":6},
+      "gridPos": {"x":12,"y":64,"w":12,"h":6},
       "datasource": "Prometheus",
       "targets": [{"expr": "expense_tracker_last_backup_age_seconds / 3600", "legendFormat": "hours since last backup"}],
       "fieldConfig": {"defaults": {"unit": "h", "color": {"mode": "thresholds"},
@@ -302,11 +331,11 @@
       "options": {"tooltip": {"mode": "single"}}
     },
 
-    { "id": 50, "type": "row", "title": "📋 Application Logs", "gridPos": {"x":0,"y":66,"w":24,"h":1}, "collapsed": false },
+    { "id": 50, "type": "row", "title": "📋 Application Logs", "gridPos": {"x":0,"y":70,"w":24,"h":1}, "collapsed": false },
 
     {
       "id": 51, "type": "logs", "title": "expense_tracker container logs",
-      "gridPos": {"x":0,"y":67,"w":24,"h":10},
+      "gridPos": {"x":0,"y":71,"w":24,"h":10},
       "datasource": "Loki",
       "targets": [{"expr": "{container=\"/expense_tracker\"}", "legendFormat": ""}],
       "options": {"showTime": true, "showLabels": true, "wrapLogMessage": true, "sortOrder": "Descending",
@@ -315,7 +344,7 @@
 
     {
       "id": 52, "type": "logs", "title": "Error logs only",
-      "gridPos": {"x":0,"y":77,"w":24,"h":8},
+      "gridPos": {"x":0,"y":81,"w":24,"h":8},
       "datasource": "Loki",
       "targets": [{"expr": "{container=\"/expense_tracker\"} |~ \"(?i)(error|exception|traceback|critical)\"", "legendFormat": ""}],
       "options": {"showTime": true, "showLabels": false, "wrapLogMessage": true, "sortOrder": "Descending",

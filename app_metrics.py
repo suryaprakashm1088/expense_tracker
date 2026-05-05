@@ -139,11 +139,13 @@ class _DailyStatsCollector:
         # ── DB counts ────────────────────────────────────────────────────────
         try:
             import database as db
-            expense_count = db.get_expense_count_today()
-            msg_count     = db.get_whatsapp_message_count_today()
+            expense_count   = db.get_expense_count_today()
+            msg_count       = db.get_whatsapp_message_count_today()
+            msg_count_total = db.get_whatsapp_message_count_total()
         except Exception:
-            expense_count = 0
-            msg_count     = 0
+            expense_count   = 0
+            msg_count       = 0
+            msg_count_total = 0
 
         g1 = GaugeMetricFamily(
             "expense_tracker_expenses_today",
@@ -158,6 +160,13 @@ class _DailyStatsCollector:
         )
         g2.add_metric([], float(msg_count))
         yield g2
+
+        g2b = GaugeMetricFamily(
+            "expense_tracker_whatsapp_messages_total_db",
+            "All-time total WhatsApp messages logged in the database (survives restarts)",
+        )
+        g2b.add_metric([], float(msg_count_total))
+        yield g2b
 
         # ── Backup filesystem stats ──────────────────────────────────────────
         keep_days = int(os.getenv("BACKUP_KEEP_DAYS", 30))

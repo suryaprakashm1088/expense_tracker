@@ -256,13 +256,15 @@ def init_db():
         )
     """)
     for col, ddl in [
-        ("family_id",    "INTEGER"),
-        ("is_admin",     "INTEGER DEFAULT 0"),
-        ("nickname",     "TEXT"),
-        ("joined_at",    "DATETIME"),
-        ("added_by",     "TEXT"),
-        ("password_hash","TEXT"),
-        ("can_login",    "INTEGER DEFAULT 0"),
+        ("family_id",           "INTEGER"),
+        ("is_admin",            "INTEGER DEFAULT 0"),
+        ("nickname",            "TEXT"),
+        ("joined_at",           "DATETIME"),
+        ("added_by",            "TEXT"),
+        ("password_hash",       "TEXT"),
+        ("can_login",           "INTEGER DEFAULT 0"),
+        ("login_otp_hash",      "TEXT"),
+        ("login_otp_expires_at","DATETIME"),
     ]:
         try:
             c.execute(f"ALTER TABLE members ADD COLUMN {col} {ddl}")
@@ -1366,6 +1368,54 @@ def get_member_for_login(whatsapp_number):
     return dict(row) if row else None
 
 
+def toggle_member_web_login(member_id):
+    """Toggle can_login 0↔1 without touching the password hash."""
+    conn = get_connection()
+    conn.execute(
+        "UPDATE members SET can_login = CASE WHEN can_login=1 THEN 0 ELSE 1 END WHERE id=?",
+        (member_id,),
+    )
+    conn.commit()
+    conn.close()
+
+
+def set_member_otp(member_id, otp_hash, expires_at):
+    """Store a hashed OTP and expiry for a member (overwrites any existing OTP)."""
+    conn = get_connection()
+    conn.execute(
+        "UPDATE members SET login_otp_hash=?, login_otp_expires_at=? WHERE id=?",
+        (otp_hash, expires_at, member_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def clear_member_otp(member_id):
+    """Remove OTP fields after successful verification or expiry."""
+    conn = get_connection()
+    conn.execute(
+        "UPDATE members SET login_otp_hash=NULL, login_otp_expires_at=NULL WHERE id=?",
+        (member_id,),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_approved_member_by_number(whatsapp_number):
+    """Look up any approved member by WhatsApp number (regardless of can_login)."""
+    conn = get_connection()
+    # Normalise: accept with or without the whatsapp: prefix
+    number = whatsapp_number.strip()
+    if not number.startswith("whatsapp:"):
+        number = "whatsapp:" + number
+    row = conn.execute(
+        "SELECT * FROM members WHERE whatsapp_number=? AND is_approved=1",
+        (number,),
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Income Entries
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1665,6 +1715,22 @@ def log_whatsapp_message(from_number, message_type, family_id=None):
     )
     conn.commit()
     conn.close()
+
+
+def get_whatsapp_message_count_total(family_id=None):
+    """Return the all-time total number of WhatsApp messages logged."""
+    conn = get_connection()
+    if family_id:
+        count = conn.execute(
+            "SELECT COUNT(*) FROM whatsapp_message_log WHERE family_id=?",
+            (family_id,),
+        ).fetchone()[0]
+    else:
+        count = conn.execute(
+            "SELECT COUNT(*) FROM whatsapp_message_log",
+        ).fetchone()[0]
+    conn.close()
+    return count
 
 
 def get_whatsapp_message_count_today(family_id=None):
