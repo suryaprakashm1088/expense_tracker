@@ -29,6 +29,9 @@ build/
 # ── Legacy / replaced files ───────────────────────────────────────────────────
 ollama_client.py    # Replaced by local_ai.py (LM Studio + Ollama + Claude Vision)
 
+# ── Explicit file exclusions (belt-and-suspenders alongside glob patterns) ────
+expenses.db-journal # SQLite WAL journal for expenses.db
+
 # ── Editor / tool local config (machine-specific, not project code) ───────────
 .claude/
 .idea/
